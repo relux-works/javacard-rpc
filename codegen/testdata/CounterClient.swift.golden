@@ -1,0 +1,290 @@
+import Foundation
+
+/// Protocol for ``CounterClient`` — use for dependency injection and mocking in tests.
+public protocol CounterClientProtocol: Sendable {
+    func select() async throws
+    func increment(amount: UInt8) async throws -> UInt16
+    func decrement(amount: UInt8) async throws -> UInt16
+    func get() async throws -> UInt16
+    func reset() async throws
+    func setLimit(limit: UInt16) async throws
+    func getInfo() async throws -> CounterInfo
+    func store(data: Data) async throws
+    func load() async throws -> Data
+    func setCount(value: UInt32) async throws
+    func setEnabled(enabled: Bool) async throws
+    func getHash() async throws -> Data
+}
+
+public protocol CounterTransport: Sendable {
+    func transmit(cla: UInt8, ins: UInt8, p1: UInt8, p2: UInt8, data: Data?) async throws -> (sw: UInt16, data: Data)
+}
+
+/// Generated typed client for the Counter applet.
+///
+/// **DO NOT EDIT** — this file is produced by javacard-rpc codegen from `counter.toml`.
+///
+/// Wraps raw APDU encoding/decoding behind typed async methods.
+/// All communication goes through the injected ``CounterTransport``.
+///
+/// ```swift
+/// let counter = CounterClient(transport: transport)
+/// try await counter.select()
+/// let value = try await counter.increment(amount: 5)  // → 5
+/// let info = try await counter.getInfo()               // → CounterInfo
+/// ```
+public actor CounterClient: CounterClientProtocol {
+
+    private let transport: any CounterTransport
+
+    /// Applet AID (Application Identifier): `F0 00 00 01 01`.
+    /// Used by ``select()`` to address this applet on the card.
+    public static let aid = Data([0xF0, 0x00, 0x00, 0x01, 0x01])
+
+    private static let cla: UInt8 = 0xB0
+
+    /// Create a counter client backed by the given transport.
+    ///
+    /// - Parameter transport: Any ``CounterTransport`` implementation.
+    public init(transport: any CounterTransport) {
+        self.transport = transport
+    }
+
+    // MARK: - SELECT
+
+    /// Send a SELECT command to activate this applet on the card.
+    ///
+    /// Must be called once per session before invoking any other method.
+    ///
+    /// - Throws: Transport or status-word error if the applet is not installed.
+    public func select() async throws {
+        let (sw, _) = try await transport.transmit(cla: 0x00, ins: 0xA4, p1: 0x04, p2: 0x00, data: Self.aid)
+        try Self.checkStatusWord(sw)
+    }
+
+    // MARK: - increment
+
+    /// Increment the counter by the given amount and return the new value.
+    ///
+    /// - Parameter amount: Value to add (0–255).
+    /// - Returns: Counter value after the increment.
+    /// - Throws: Transport or status-word error with ``CounterError/swOverflow``
+    ///   if the result would exceed the current limit.
+    @discardableResult
+    public func increment(amount: UInt8) async throws -> UInt16 {
+        let (sw, respData) = try await transport.transmit(cla: Self.cla, ins: 0x01, p1: amount, p2: 0x00, data: nil)
+        try Self.checkStatusWord(sw)
+        return try Self.readU16(from: respData, at: 0)
+    }
+
+    // MARK: - decrement
+
+    /// Decrement the counter by the given amount and return the new value.
+    ///
+    /// - Parameter amount: Value to subtract (0–255).
+    /// - Returns: Counter value after the decrement.
+    /// - Throws: Transport or status-word error with ``CounterError/swUnderflow``
+    ///   if the result would go below zero.
+    @discardableResult
+    public func decrement(amount: UInt8) async throws -> UInt16 {
+        let (sw, respData) = try await transport.transmit(cla: Self.cla, ins: 0x02, p1: amount, p2: 0x00, data: nil)
+        try Self.checkStatusWord(sw)
+        return try Self.readU16(from: respData, at: 0)
+    }
+
+    // MARK: - get
+
+    /// Read the current counter value without modifying it.
+    ///
+    /// - Returns: Current counter value as `UInt16`.
+    public func get() async throws -> UInt16 {
+        let (sw, respData) = try await transport.transmit(cla: Self.cla, ins: 0x03, p1: 0x00, p2: 0x00, data: nil)
+        try Self.checkStatusWord(sw)
+        return try Self.readU16(from: respData, at: 0)
+    }
+
+    // MARK: - reset
+
+    /// Reset the counter to zero. Does not affect the limit or stored data.
+    public func reset() async throws {
+        let (sw, _) = try await transport.transmit(cla: Self.cla, ins: 0x04, p1: 0x00, p2: 0x00, data: nil)
+        try Self.checkStatusWord(sw)
+    }
+
+    // MARK: - setLimit
+
+    /// Set the upper bound for the counter. Increments that would exceed this limit
+    /// will be rejected with ``CounterError/swOverflow``.
+    ///
+    /// - Parameter limit: Maximum allowed counter value (0–65535).
+    public func setLimit(limit: UInt16) async throws {
+        var data = Data(count: 2)
+        data[0] = UInt8(limit >> 8)
+        data[1] = UInt8(limit & 0xFF)
+        let (sw, _) = try await transport.transmit(cla: Self.cla, ins: 0x05, p1: 0x00, p2: 0x00, data: data)
+        try Self.checkStatusWord(sw)
+    }
+
+    // MARK: - getInfo
+
+    /// Read the full counter state in a single round-trip.
+    ///
+    /// - Returns: A ``CounterInfo`` containing the current value, configured limit,
+    ///   and applet firmware version.
+    public func getInfo() async throws -> CounterInfo {
+        let (sw, respData) = try await transport.transmit(cla: Self.cla, ins: 0x06, p1: 0x00, p2: 0x00, data: nil)
+        try Self.checkStatusWord(sw)
+        return CounterInfo(
+            value: try Self.readU16(from: respData, at: 0),
+            limit: try Self.readU16(from: respData, at: 2),
+            version: try Self.readU8(from: respData, at: 4)
+        )
+    }
+
+    // MARK: - store
+
+    /// Store an arbitrary data blob on the card (up to 128 bytes).
+    ///
+    /// Overwrites any previously stored data. Use ``load()`` to retrieve it.
+    ///
+    /// - Parameter data: Bytes to store. Maximum 128 bytes.
+    /// - Throws: Transport or status-word error with ``CounterError/swDataTooLong``
+    ///   if `data.count > 128`.
+    public func store(data: Data) async throws {
+        let (sw, _) = try await transport.transmit(cla: Self.cla, ins: 0x07, p1: 0x00, p2: 0x00, data: data)
+        try Self.checkStatusWord(sw)
+    }
+
+    // MARK: - load
+
+    /// Retrieve the data blob previously written with ``store(data:)``.
+    ///
+    /// - Returns: The stored bytes.
+    /// - Throws: Transport or status-word error with ``CounterError/swNoData``
+    ///   if nothing has been stored yet.
+    public func load() async throws -> Data {
+        let (sw, respData) = try await transport.transmit(cla: Self.cla, ins: 0x08, p1: 0x00, p2: 0x00, data: nil)
+        try Self.checkStatusWord(sw)
+        return respData
+    }
+
+    // MARK: - setCount
+
+    /// Set current counter value.
+    ///
+    /// - Parameter value.
+    public func setCount(value: UInt32) async throws {
+        var data = Data(count: 4)
+        data[0] = UInt8((value >> 24) & 0xFF)
+        data[1] = UInt8((value >> 16) & 0xFF)
+        data[2] = UInt8((value >> 8) & 0xFF)
+        data[3] = UInt8(value & 0xFF)
+        let (sw, _) = try await transport.transmit(cla: Self.cla, ins: 0x09, p1: 0x00, p2: 0x00, data: data)
+        try Self.checkStatusWord(sw)
+    }
+
+    // MARK: - setEnabled
+
+    /// Enable or disable counter.
+    ///
+    /// - Parameter enabled.
+    public func setEnabled(enabled: Bool) async throws {
+        let (sw, _) = try await transport.transmit(cla: Self.cla, ins: 0x0A, p1: (enabled ? 0x01 : 0x00), p2: 0x00, data: nil)
+        try Self.checkStatusWord(sw)
+    }
+
+    // MARK: - getHash
+
+    /// Get SHA-256 hash of stored data.
+    ///
+    /// - Returns: `Data`.
+    public func getHash() async throws -> Data {
+        let (sw, respData) = try await transport.transmit(cla: Self.cla, ins: 0x0B, p1: 0x00, p2: 0x00, data: nil)
+        try Self.checkStatusWord(sw)
+        return try Self.readBytes(from: respData, at: 0, count: 32)
+    }
+
+    private enum TransportError: Error {
+        case statusWord(UInt16)
+        case invalidResponse
+    }
+
+    private static func checkStatusWord(_ sw: UInt16) throws {
+        guard sw == 0x9000 else {
+            throw TransportError.statusWord(sw)
+        }
+    }
+
+    private static func readU8(from data: Data, at offset: Int) throws -> UInt8 {
+        try ensureReadableRange(in: data, offset: offset, length: 1)
+        return data[offset]
+    }
+
+    private static func readU16(from data: Data, at offset: Int) throws -> UInt16 {
+        try ensureReadableRange(in: data, offset: offset, length: 2)
+        return (UInt16(data[offset]) << 8) | UInt16(data[offset + 1])
+    }
+
+    private static func readU32(from data: Data, at offset: Int) throws -> UInt32 {
+        try ensureReadableRange(in: data, offset: offset, length: 4)
+        return (UInt32(data[offset]) << 24) | (UInt32(data[offset + 1]) << 16) | (UInt32(data[offset + 2]) << 8) | UInt32(data[offset + 3])
+    }
+
+    private static func readBool(from data: Data, at offset: Int) throws -> Bool {
+        let raw = try readU8(from: data, at: offset)
+        switch raw {
+        case 0x00:
+            return false
+        case 0x01:
+            return true
+        default:
+            throw TransportError.invalidResponse
+        }
+    }
+
+    private static func readBytes(from data: Data, at offset: Int, count: Int) throws -> Data {
+        try ensureReadableRange(in: data, offset: offset, length: count)
+        return data.subdata(in: offset..<(offset + count))
+    }
+
+    private static func readBytes(from data: Data, at offset: Int) throws -> Data {
+        guard offset >= 0, offset <= data.count else {
+            throw TransportError.invalidResponse
+        }
+        return data.subdata(in: offset..<data.count)
+    }
+
+    private static func ensureReadableRange(in data: Data, offset: Int, length: Int) throws {
+        guard offset >= 0, length >= 0, offset <= data.count else {
+            throw TransportError.invalidResponse
+        }
+        guard length <= data.count - offset else {
+            throw TransportError.invalidResponse
+        }
+    }
+}
+
+/// Snapshot of the counter applet state, returned by ``CounterClient/getInfo()``.
+public struct CounterInfo: Sendable, Equatable {
+    /// Current counter value.
+    public let value: UInt16
+    /// Configured upper limit (increments past this are rejected).
+    public let limit: UInt16
+    /// Applet firmware version byte.
+    public let version: UInt8
+}
+
+/// Well-known status word codes returned by the Counter applet on errors.
+///
+/// Compare these values against status words surfaced by the transport implementation
+/// to handle specific failures.
+public enum CounterError {
+    /// `0x6985` — Decrement would bring the counter below zero.
+    public static let swUnderflow: UInt16 = 0x6985
+    /// `0x6986` — Increment would push the counter past the configured limit.
+    public static let swOverflow: UInt16 = 0x6986
+    /// `0x6A88` — No data has been stored yet (``CounterClient/load()`` called before ``CounterClient/store(data:)``).
+    public static let swNoData: UInt16 = 0x6A88
+    /// `0x6A80` — Data payload exceeds the 128-byte maximum.
+    public static let swDataTooLong: UInt16 = 0x6A80
+}

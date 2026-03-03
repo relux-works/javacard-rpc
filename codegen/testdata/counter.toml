@@ -1,0 +1,84 @@
+[applet]
+name = "Counter"
+description = "Simple counter with increment, decrement, get, reset"
+version = "1.0.0"
+aid = "F000000101"
+cla = 0xB0
+
+[methods.increment]
+ins = 0x01
+description = "Increment counter by amount"
+[methods.increment.request]
+fields = [{ name = "amount", type = "u8" }]
+[methods.increment.response]
+fields = [{ name = "value", type = "u16" }]
+
+[methods.decrement]
+ins = 0x02
+description = "Decrement counter by amount"
+[methods.decrement.request]
+fields = [{ name = "amount", type = "u8" }]
+[methods.decrement.response]
+fields = [{ name = "value", type = "u16" }]
+
+[methods.get]
+ins = 0x03
+description = "Get current counter value"
+[methods.get.response]
+fields = [{ name = "value", type = "u16" }]
+
+[methods.reset]
+ins = 0x04
+description = "Reset counter to zero"
+
+[methods.setLimit]
+ins = 0x05
+description = "Set upper limit for counter"
+[methods.setLimit.request]
+fields = [{ name = "limit", type = "u16" }]
+
+[methods.getInfo]
+ins = 0x06
+description = "Get counter state: value, limit, version"
+[methods.getInfo.response]
+fields = [
+    { name = "value", type = "u16" },
+    { name = "limit", type = "u16" },
+    { name = "version", type = "u8" }
+]
+
+[methods.store]
+ins = 0x07
+description = "Store arbitrary data blob (up to 128 bytes)"
+[methods.store.request]
+fields = [{ name = "data", type = "bytes" }]
+
+[methods.load]
+ins = 0x08
+description = "Load previously stored data blob"
+[methods.load.response]
+fields = [{ name = "data", type = "bytes" }]
+
+[methods.setCount]
+ins = 0x09
+description = "Set current counter value"
+[methods.setCount.request]
+fields = [{ name = "value", type = "u32" }]
+
+[methods.setEnabled]
+ins = 0x0A
+description = "Enable or disable counter"
+[methods.setEnabled.request]
+fields = [{ name = "enabled", type = "bool" }]
+
+[methods.getHash]
+ins = 0x0B
+description = "Get SHA-256 hash of stored data"
+[methods.getHash.response]
+fields = [{ name = "hash", type = "bytes[32]" }]
+
+[status_words]
+SW_UNDERFLOW = { code = 0x6985, description = "Counter would go below zero" }
+SW_OVERFLOW = { code = 0x6986, description = "Counter would exceed limit" }
+SW_NO_DATA = { code = 0x6A88, description = "No data stored" }
+SW_DATA_TOO_LONG = { code = 0x6A80, description = "Data exceeds max size" }

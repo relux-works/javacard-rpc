@@ -1,0 +1,25 @@
+# Build
+build/
+.gradle/
+out/
+.kotlin/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.project
+.classpath
+.settings/
+
+# Java Card
+*.cap
+*.exp
+*.jca
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp
+.temp/

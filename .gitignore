@@ -1,0 +1,30 @@
+# Research (internal, not for public)
+.research/
+
+# Prototypes (internal reference, not for public)
+prototypes/
+
+# Build
+build/
+.build/
+.gradle/
+out/
+codegen/jcrpc-gen
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp
+.temp/
+
+# Task board
+task-board.config.json
+.task-board/
+*.xcuserstate
+.swiftpm/xcode/xcuserdata/

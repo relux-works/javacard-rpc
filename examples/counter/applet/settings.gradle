@@ -1,0 +1,3 @@
+rootProject.name = 'counter-applet'
+
+includeBuild('../../../../counter-server-javacard')
