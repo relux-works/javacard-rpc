@@ -1,0 +1,36 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+group = 'io.jcrpc'
+version = '0.1.0'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'com.klinec:jcardsim:3.0.5.9'
+    implementation files('libs/smartcardio.jar')
+}
+
+application {
+    mainClass = 'io.jcrpc.bridge.Main'
+}
+
+jar {
+    manifest {
+        attributes 'Main-Class': 'io.jcrpc.bridge.Main'
+    }
+}
+
+run {
+    jvmArgs '--add-modules', 'java.smartcardio'
+    standardInput = System.in
+}

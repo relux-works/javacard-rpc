@@ -1,0 +1,20 @@
+// swift-tools-version: 6.2
+
+import PackageDescription
+
+let package = Package(
+    name: "counter-client-swift",
+    platforms: [
+        .iOS(.v15),
+        .macOS(.v12),
+    ],
+    products: [
+        .library(name: "CounterClient", targets: ["CounterClient"]),
+    ],
+    targets: [
+        .target(
+            name: "CounterClient",
+            path: "Sources/CounterClient"
+        ),
+    ]
+)

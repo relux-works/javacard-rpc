@@ -1,0 +1,9 @@
+package io.jcrpc.counter.server;
+
+/**
+ * Transport abstraction for Counter commands.
+ * Implement this in your APDU adapter (or any other transport).
+ */
+public interface CounterTransport {
+    byte[] transmit(byte ins, byte p1, byte p2, byte[] data);
+}

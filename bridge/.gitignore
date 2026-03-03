@@ -1,0 +1,17 @@
+# Build
+build/
+.gradle/
+out/
+.kotlin/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp
+.temp/
