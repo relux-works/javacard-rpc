@@ -8,8 +8,8 @@ let package = Package(
         .macOS(.v13),
     ],
     dependencies: [
-        .package(path: "../../../../counter-client-swift"),
-        .package(path: "../../../../javacard-rpc-client-swift"),
+        .package(path: "../generated/counter-client-swift"),
+        .package(path: "../../../../javacard-rpc-client-swift"),  // runtime
     ],
     targets: [
         .executableTarget(

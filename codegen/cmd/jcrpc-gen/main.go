@@ -141,6 +141,15 @@ func run(args []string, stderr io.Writer) int {
 			return exitCodeIO
 		}
 
+		// write settings.gradle
+		settingsPath := filepath.Join(pkgDir, "settings.gradle")
+		settingsContent := fmt.Sprintf("rootProject.name = '%s-server-javacard'\n", appletLower)
+		if err := os.WriteFile(settingsPath, []byte(settingsContent), 0o644); err != nil {
+			fmt.Fprintf(stderr, "write %s: %v\n", settingsPath, err)
+			return exitCodeIO
+		}
+		generated = append(generated, settingsPath)
+
 		// write build.gradle
 		gradlePath := filepath.Join(pkgDir, "build.gradle")
 		gradleContent := generateBuildGradle(javaPackage, schema.Applet.Version)

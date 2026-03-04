@@ -14,7 +14,7 @@ CODEGEN_DIR   := codegen
 CODEGEN_BIN   := $(CODEGEN_DIR)/jcrpc-gen
 EXAMPLE_DIR   := examples/counter
 CLI_DIR       := $(EXAMPLE_DIR)/cli
-OUT_DIR       := $(shell cd .. && pwd)
+GEN_DIR       := $(EXAMPLE_DIR)/generated
 
 .PHONY: build-codegen generate build-bridge build-applet run-bridge run-example e2e clean
 
@@ -24,7 +24,8 @@ build-codegen:
 	cd $(CODEGEN_DIR) && go build -o jcrpc-gen ./cmd/jcrpc-gen
 
 generate: build-codegen
-	$(CODEGEN_BIN) --all --out-dir $(OUT_DIR) --verbose $(EXAMPLE_DIR)/counter.toml
+	mkdir -p $(GEN_DIR)
+	$(CODEGEN_BIN) --all --out-dir $(GEN_DIR) --verbose $(EXAMPLE_DIR)/counter.toml
 
 build-bridge:
 	cd bridge && ./gradlew build -q
@@ -63,6 +64,7 @@ test: test-codegen
 
 clean:
 	rm -f $(CODEGEN_BIN)
+	rm -rf $(GEN_DIR)
 	cd $(CLI_DIR) && rm -rf .build
 	cd bridge && ./gradlew clean -q 2>/dev/null || true
 	cd $(EXAMPLE_DIR)/applet && ./gradlew clean -q 2>/dev/null || true

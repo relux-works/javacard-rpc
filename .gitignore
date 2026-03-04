@@ -4,6 +4,9 @@
 # Prototypes (internal reference, not for public)
 prototypes/
 
+# Generated (codegen output)
+examples/counter/generated/
+
 # Build
 build/
 .build/
