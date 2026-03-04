@@ -31,6 +31,7 @@ func TestRunAllGeneratesPackages(t *testing.T) {
 	javaTransportPath := filepath.Join(javaSrcDir, "CounterTransport.java")
 	javaSkeletonPath := filepath.Join(javaSrcDir, "CounterSkeleton.java")
 	javaBuildGradle := filepath.Join(outDir, "counter-server-javacard", "build.gradle")
+	javaSettingsGradle := filepath.Join(outDir, "counter-server-javacard", "settings.gradle")
 
 	assertGoldenEquals(t,
 		filepath.Join("..", "..", "testdata", "CounterTransport.java.golden"),
@@ -42,6 +43,8 @@ func TestRunAllGeneratesPackages(t *testing.T) {
 	)
 	assertFileExists(t, javaBuildGradle)
 	assertFileContains(t, javaBuildGradle, "group = 'io.jcrpc'")
+	assertFileExists(t, javaSettingsGradle)
+	assertFileContains(t, javaSettingsGradle, "rootProject.name = 'counter-server-javacard'")
 
 	// Swift package structure
 	swiftClientPath := filepath.Join(outDir, "counter-client-swift",
@@ -127,6 +130,7 @@ func TestRunJavaOnlyWritesJavaPackage(t *testing.T) {
 		"src", "main", "java", "io", "jcrpc", "counter", "server",
 		"CounterSkeleton.java")
 	assertFileExists(t, javaPath)
+	assertFileExists(t, filepath.Join(outDir, "counter-server-javacard", "settings.gradle"))
 
 	// no swift package
 	swiftDir := filepath.Join(outDir, "counter-client-swift")
@@ -173,6 +177,7 @@ func TestRunAllUsesDefaultsWhenLanguagesNotSpecified(t *testing.T) {
 	// default java package = lowercase applet name
 	javaBuildGradle := filepath.Join(outDir, "counter-server-javacard", "build.gradle")
 	assertFileExists(t, javaBuildGradle)
+	assertFileExists(t, filepath.Join(outDir, "counter-server-javacard", "settings.gradle"))
 
 	javaSkeletonPath := filepath.Join(outDir, "counter-server-javacard",
 		"src", "main", "java", "counter", "CounterSkeleton.java")

@@ -5,7 +5,7 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BRIDGE_DIR="$SCRIPT_DIR/../../bridge"
 APPLET_DIR="$SCRIPT_DIR/applet"
-COUNTER_SERVER_DIR="$SCRIPT_DIR/../../../counter-server-javacard"
+COUNTER_SERVER_DIR="$SCRIPT_DIR/generated/counter-server-javacard"
 
 # Build everything first
 echo "[run-bridge] building bridge..."
