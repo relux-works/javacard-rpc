@@ -111,8 +111,8 @@ Generated code depends on thin runtime libraries:
 
 | Package | Description |
 |---------|-------------|
-| [appletrpc-client-swift](https://github.com/relux-works/appletrpc-client-swift) | Swift: `APDUCommand`, `APDUResponse`, `TCPTransport`, `DataPacker` |
-| [appletrpc-server-javacard](https://github.com/relux-works/appletrpc-server-javacard) | Java Card: `AppletBase` with APDU dispatch + type helpers |
+| [javacard-rpc-client-swift](https://github.com/relux-works/javacard-rpc-client-swift) | Swift: `APDUCommand`, `APDUResponse`, `TCPTransport`, `DataPacker` |
+| [javacard-rpc-server-javacard](https://github.com/relux-works/javacard-rpc-server-javacard) | Java Card: `AppletBase` with APDU dispatch + type helpers |
 
 ## Testing
 

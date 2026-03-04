@@ -9,14 +9,14 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../../../../counter-client-swift"),
-        .package(path: "../../../../appletrpc-client-swift"),
+        .package(path: "../../../../javacard-rpc-client-swift"),
     ],
     targets: [
         .executableTarget(
             name: "counter-cli",
             dependencies: [
                 .product(name: "CounterClient", package: "counter-client-swift"),
-                .product(name: "AppletRPCClient", package: "appletrpc-client-swift"),
+                .product(name: "JavaCardRPCClient", package: "javacard-rpc-client-swift"),
             ],
             path: "Sources"
         ),
