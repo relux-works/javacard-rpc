@@ -80,7 +80,7 @@ SW_OVERFLOW = { code = 0x6986, description = "Counter would exceed limit" }
 ### Swift Client (host wiring)
 
 ```swift
-import AppletRPCClient   // concrete transport
+import JavaCardRPCClient   // concrete transport
 import CounterClient      // generated (owns CounterTransport protocol)
 
 extension TCPTransport: CounterTransport {
@@ -99,7 +99,7 @@ let client = CounterClient(transport: TCPTransport(host: "127.0.0.1", port: 9025
 
 ```java
 // CounterApplet extends generated CounterSkeleton
-// AppletBase (from appletrpc-server-javacard) handles APDU dispatch
+// AppletBase (from javacard-rpc-server-javacard) handles APDU dispatch
 // Adapter bridges AppletBase → CounterTransport interface
 ```
 
@@ -107,8 +107,8 @@ let client = CounterClient(transport: TCPTransport(host: "127.0.0.1", port: 9025
 
 | Package | GitHub | Purpose |
 |---------|--------|---------|
-| `appletrpc-client-swift` | relux-works/appletrpc-client-swift | Swift transport: APDUCommand, APDUResponse, TCPTransport, DataPacker |
-| `appletrpc-server-javacard` | relux-works/appletrpc-server-javacard | Java Card base: AppletBase with APDU dispatch + type helpers |
+| `javacard-rpc-client-swift` | relux-works/javacard-rpc-client-swift | Swift transport: APDUCommand, APDUResponse, TCPTransport, DataPacker |
+| `javacard-rpc-server-javacard` | relux-works/javacard-rpc-server-javacard | Java Card base: AppletBase with APDU dispatch + type helpers |
 
 ## CLI Reference
 

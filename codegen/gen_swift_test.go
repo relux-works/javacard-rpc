@@ -84,7 +84,7 @@ func TestGenerateSwiftClientCounterAPDUConstruction(t *testing.T) {
 	src := string(got)
 
 	requireContains(t, src, "import Foundation")
-	requireNotContains(t, src, "import AppletRPCClient")
+	requireNotContains(t, src, "import JavaCardRPCClient")
 	requireContains(t, src, "public protocol CounterTransport: Sendable {")
 	requireContains(t, src, "func transmit(cla: UInt8, ins: UInt8, p1: UInt8, p2: UInt8, data: Data?) async throws -> (sw: UInt16, data: Data)")
 	requireContains(t, src, "private let transport: any CounterTransport")

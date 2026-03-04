@@ -1,5 +1,5 @@
 import Foundation
-import AppletRPCClient
+import JavaCardRPCClient
 import CounterClient
 
 // MARK: - DI: Conform TCPTransport to generated CounterTransport protocol
