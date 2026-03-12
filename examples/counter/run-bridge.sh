@@ -7,11 +7,12 @@ BRIDGE_DIR="$SCRIPT_DIR/../../bridge"
 APPLET_DIR="$SCRIPT_DIR/applet"
 COUNTER_SERVER_DIR="$SCRIPT_DIR/generated/counter-server-javacard"
 
-# Build everything first
-echo "[run-bridge] building bridge..."
-(cd "$BRIDGE_DIR" && ./gradlew build -q) || exit 1
-echo "[run-bridge] building counter applet..."
-(cd "$APPLET_DIR" && ./gradlew build -q) || exit 1
+if [ "${JCRPC_SKIP_BUILD:-0}" != "1" ]; then
+  echo "[run-bridge] building bridge..."
+  (cd "$BRIDGE_DIR" && ./gradlew build -q) || exit 1
+  echo "[run-bridge] building counter applet..."
+  (cd "$APPLET_DIR" && ./gradlew build -q) || exit 1
+fi
 
 # Collect classpath
 JCARDSIM_JAR=$(find ~/.gradle/caches -name "jcardsim-3.0.5.9.jar" -print -quit 2>/dev/null)

@@ -1,6 +1,6 @@
 [applet]
 name = "Counter"
-description = "Simple counter with increment, decrement, get, reset"
+description = "Counter example with richer auth-like metadata and signing methods"
 version = "1.0.0"
 aid = "F000000101"
 cla = 0xB0
@@ -39,12 +39,14 @@ fields = [{ name = "limit", type = "u16" }]
 
 [methods.getInfo]
 ins = 0x06
-description = "Get counter state: value, limit, version"
+description = "Get counter state snapshot with flags"
 [methods.getInfo.response]
 fields = [
     { name = "value", type = "u16" },
     { name = "limit", type = "u16" },
-    { name = "version", type = "u8" }
+    { name = "version", type = "u8" },
+    { name = "hasStoredData", type = "bool" },
+    { name = "isAtLimit", type = "bool" }
 ]
 
 [methods.store]
@@ -59,8 +61,35 @@ description = "Load previously stored data blob"
 [methods.load.response]
 fields = [{ name = "data", type = "bytes" }]
 
+[methods.getSpki]
+ins = 0x09
+description = "Return mock DER SPKI bytes similar to auth-style applets"
+[methods.getSpki.response]
+fields = [{ name = "spki", type = "bytes[91]" }]
+
+[methods.getImsi]
+ins = 0x0A
+description = "Return mock IMSI bytes as ASCII digits"
+[methods.getImsi.response]
+fields = [{ name = "imsi", type = "bytes" }]
+
+[methods.getAppletInfo]
+ins = 0x0B
+description = "Return mock TLV applet metadata payload"
+[methods.getAppletInfo.response]
+fields = [{ name = "info", type = "bytes" }]
+
+[methods.signChallenge]
+ins = 0x0C
+description = "Return deterministic mock DER signature bytes for the provided challenge"
+[methods.signChallenge.request]
+fields = [{ name = "challenge", type = "bytes" }]
+[methods.signChallenge.response]
+fields = [{ name = "signature", type = "bytes" }]
+
 [status_words]
 SW_UNDERFLOW = { code = 0x6985, description = "Counter would go below zero" }
 SW_OVERFLOW = { code = 0x6986, description = "Counter would exceed limit" }
 SW_NO_DATA = { code = 0x6A88, description = "No data stored" }
 SW_DATA_TOO_LONG = { code = 0x6A80, description = "Data exceeds max size" }
+SW_EMPTY_CHALLENGE = { code = 0x6700, description = "Challenge must not be empty" }

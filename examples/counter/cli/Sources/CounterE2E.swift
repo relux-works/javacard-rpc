@@ -50,6 +50,61 @@ struct CounterE2E {
             }
         }
 
+        func expectData(_ actual: Data, _ expected: Data, _ msg: String) throws {
+            guard actual == expected else {
+                throw TestError.assertion("\(msg): expected \(expected as NSData), got \(actual as NSData)")
+            }
+        }
+
+        func parseTLV(_ data: Data) throws -> [UInt8: Data] {
+            var out: [UInt8: Data] = [:]
+            var offset = 0
+            while offset < data.count {
+                guard offset + 2 <= data.count else {
+                    throw TestError.assertion("truncated TLV header")
+                }
+                let tag = data[offset]
+                let len = Int(data[offset + 1])
+                offset += 2
+                guard offset + len <= data.count else {
+                    throw TestError.assertion("truncated TLV value")
+                }
+                out[tag] = data.subdata(in: offset..<(offset + len))
+                offset += len
+            }
+            return out
+        }
+
+        func expectPrefix(_ actual: Data, _ prefix: [UInt8], _ msg: String) throws {
+            let expected = Data(prefix)
+            guard actual.count >= expected.count, actual.prefix(expected.count) == expected else {
+                throw TestError.assertion("\(msg): wrong prefix")
+            }
+        }
+
+        func expectedMockSignature(challenge: Data, counter: UInt16, limit: UInt16) -> Data {
+            let partLen = min(challenge.count, 8)
+            var out = Data(count: 2 + 2 + partLen + 2 + partLen)
+            out[0] = 0x30
+            out[1] = UInt8(out.count - 2)
+            out[2] = 0x02
+            out[3] = UInt8(partLen)
+            for i in 0..<partLen {
+                out[4 + i] = challenge[i] ^ 0x01 ^ UInt8(counter & 0x00FF)
+            }
+            out[4] &= 0x7F
+
+            let secondOff = 4 + partLen
+            out[secondOff] = 0x02
+            out[secondOff + 1] = UInt8(partLen)
+            for i in 0..<partLen {
+                let srcIndex = challenge.count - 1 - i
+                out[secondOff + 2 + i] = challenge[srcIndex] ^ UInt8(limit & 0x00FF) ^ 0x5A
+            }
+            out[secondOff + 2] &= 0x7F
+            return out
+        }
+
         func expectSW(_ body: () async throws -> Void, sw: UInt16) async throws {
             do {
                 try await body()
@@ -121,23 +176,64 @@ struct CounterE2E {
             try await expectSW({ try await counter.store(data: bigData) }, sw: 0x6A80)
         }
 
-        // Test 9: getInfo() → correct values
-        await test("9. getInfo() → {value=6, limit=10, version=1}") {
+        // Test 9: getInfo() → correct values and flags
+        await test("9. getInfo() → {value=6, limit=10, version=1, hasStoredData=true, isAtLimit=false}") {
             let info = try await counter.getInfo()
             try expect(info.value, UInt16(6), "value")
             try expect(info.limit, UInt16(10), "limit")
             try expect(info.version, UInt8(1), "version")
+            try expect(info.hasStoredData, true, "hasStoredData")
+            try expect(info.isAtLimit, false, "isAtLimit")
         }
 
-        // Test 10: reset() → get() → 0
-        await test("10. reset() → get() → 0") {
+        // Test 10: getSpki() → 91-byte mock DER
+        await test("10. getSpki() → fixed 91-byte mock DER") {
+            let spki = try await counter.getSpki()
+            try expect(spki.count, 91, "spki byte count")
+            try expectPrefix(spki, [0x30, 0x59, 0x30, 0x13], "spki")
+            try expect(spki[26], 0x04, "spki EC point prefix")
+        }
+
+        // Test 11: getImsi() → ASCII digits
+        await test("11. getImsi() → ASCII digits") {
+            let imsi = try await counter.getImsi()
+            try expectData(imsi, Data("250011234567890".utf8), "imsi")
+        }
+
+        // Test 12: getAppletInfo() → mock TLV payload
+        await test("12. getAppletInfo() → expected TLV payload") {
+            let info = try await counter.getAppletInfo()
+            let tlv = try parseTLV(info)
+            try expectData(tlv[0x01] ?? Data(), Data([0x01]), "schemaVersion")
+            try expectData(tlv[0x02] ?? Data(), Data([0xF0, 0x00, 0x00, 0x01, 0x01]), "appletAid")
+            try expectData(tlv[0x03] ?? Data(), Data("1.0.0".utf8), "appletVersion")
+            try expectData(tlv[0x04] ?? Data(), Data([0x01]), "keyAlgorithm")
+            try expectData(tlv[0x05] ?? Data(), Data([0x00, 0x3F]), "capabilities")
+        }
+
+        // Test 13: signChallenge() → deterministic mock DER
+        await test("13. signChallenge() → deterministic mock DER") {
+            let challenge = Data("auth-like-challenge".utf8)
+            let signature = try await counter.signChallenge(challenge: challenge)
+            let info = try await counter.getInfo()
+            let expected = expectedMockSignature(challenge: challenge, counter: info.value, limit: info.limit)
+            try expectData(signature, expected, "signature")
+        }
+
+        // Test 14: signChallenge(empty) → SW_EMPTY_CHALLENGE
+        await test("14. signChallenge(empty) → SW_EMPTY_CHALLENGE") {
+            try await expectSW({ try await counter.signChallenge(challenge: Data()) }, sw: 0x6700)
+        }
+
+        // Test 15: reset() → get() → 0
+        await test("15. reset() → get() → 0") {
             try await counter.reset()
             let v = try await counter.get()
             try expect(v, UInt16(0), "get after reset")
         }
 
-        // Test 11: store(128 bytes) → OK, load() → same
-        await test("11. store(128 bytes max) → load() roundtrip") {
+        // Test 16: store(128 bytes) → OK, load() → same
+        await test("16. store(128 bytes max) → load() roundtrip") {
             let data = Data((0..<128).map { UInt8($0) })
             try await counter.store(data: data)
             let loaded = try await counter.load()
