@@ -17,12 +17,20 @@ public class CounterApplet extends CounterSkeleton {
         (byte) '1', (byte) '2', (byte) '3', (byte) '4', (byte) '5',
         (byte) '6', (byte) '7', (byte) '8', (byte) '9', (byte) '0'
     };
+    private static final byte[] MOCK_DISPLAY_NAME = {
+        (byte) 0xD0, (byte) 0x9F, (byte) 0xD1, (byte) 0x80, (byte) 0xD0, (byte) 0xB8,
+        (byte) 0xD0, (byte) 0xB2, (byte) 0xD0, (byte) 0xB5, (byte) 0xD1, (byte) 0x82,
+        (byte) 0x2C, (byte) 0x20, (byte) 0x42, (byte) 0x53, (byte) 0x69, (byte) 0x6D
+    };
     private static final byte[] MOCK_AID = {
         (byte) 0xF0, (byte) 0x00, (byte) 0x00, (byte) 0x01, (byte) 0x01
     };
-    private static final byte[] MOCK_APPLET_VERSION = {
-        (byte) '1', (byte) '.', (byte) '0', (byte) '.', (byte) '0'
-    };
+    private static final byte MOCK_SCHEMA_VERSION = (byte) 0x01;
+    private static final byte MOCK_VERSION_MAJOR = (byte) 0x01;
+    private static final byte MOCK_VERSION_MINOR = (byte) 0x00;
+    private static final byte MOCK_VERSION_PATCH = (byte) 0x00;
+    private static final byte MOCK_KEY_ALGORITHM = (byte) 0x01;
+    private static final short MOCK_CAPABILITIES = (short) 0x003F;
     private static final byte[] MOCK_SPKI_PREFIX = {
         (byte) 0x30, (byte) 0x59,
         (byte) 0x30, (byte) 0x13,
@@ -146,6 +154,16 @@ public class CounterApplet extends CounterSkeleton {
         return buildMockSignature(challenge);
     }
 
+    @Override
+    protected byte[] onGetDisplayName() {
+        return copyBytes(MOCK_DISPLAY_NAME);
+    }
+
+    @Override
+    protected byte[] onEchoMessage(byte[] message) {
+        return copyBytes(message);
+    }
+
     private static byte[] buildMockEcPoint() {
         byte[] point = new byte[65];
         point[0] = 0x04;
@@ -164,13 +182,15 @@ public class CounterApplet extends CounterSkeleton {
     }
 
     private static byte[] buildMockAppletInfo() {
-        byte[] out = new byte[24];
+        byte[] out = new byte[12];
         int off = 0;
-        off = putTlvScalar(out, off, (byte) 0x01, (byte) 0x01);
-        off = putTlvBytes(out, off, (byte) 0x02, MOCK_AID);
-        off = putTlvBytes(out, off, (byte) 0x03, MOCK_APPLET_VERSION);
-        off = putTlvScalar(out, off, (byte) 0x04, (byte) 0x01);
-        putTlvBytes(out, off, (byte) 0x05, new byte[] { (byte) 0x00, (byte) 0x3F });
+        off = packU8(out, off, MOCK_SCHEMA_VERSION);
+        off = packBytes(out, off, MOCK_AID, 0, MOCK_AID.length);
+        off = packU8(out, off, MOCK_VERSION_MAJOR);
+        off = packU8(out, off, MOCK_VERSION_MINOR);
+        off = packU8(out, off, MOCK_VERSION_PATCH);
+        off = packU8(out, off, MOCK_KEY_ALGORITHM);
+        packU16(out, off, MOCK_CAPABILITIES);
         return out;
     }
 
@@ -196,20 +216,6 @@ public class CounterApplet extends CounterSkeleton {
         }
         out[secondOff + 2] = (byte) (out[secondOff + 2] & 0x7F);
         return out;
-    }
-
-    private static int putTlvScalar(byte[] out, int off, byte tag, byte value) {
-        out[off++] = tag;
-        out[off++] = 0x01;
-        out[off++] = value;
-        return off;
-    }
-
-    private static int putTlvBytes(byte[] out, int off, byte tag, byte[] value) {
-        out[off++] = tag;
-        out[off++] = (byte) value.length;
-        System.arraycopy(value, 0, out, off, value.length);
-        return off + value.length;
     }
 
     private static byte[] copyBytes(byte[] source) {

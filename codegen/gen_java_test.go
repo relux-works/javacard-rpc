@@ -100,6 +100,83 @@ func TestGenerateJavaSkeletonCounterTransportShape(t *testing.T) {
 	}
 }
 
+func TestGenerateJavaSkeletonSupportsASCIIFields(t *testing.T) {
+	s := &Schema{
+		Applet: Applet{
+			Name: "Demo",
+			AID:  "A000000001",
+			CLA:  0x80,
+		},
+		Methods: map[string]*Method{
+			"setImsi": {
+				Name: "setImsi",
+				INS:  0x01,
+				Request: &Message{Fields: []Field{
+					{Name: "imsi", Type: FieldTypeASCII, Length: intPtr(15), Location: ParameterLocationData},
+				}},
+			},
+			"getImsi": {
+				Name: "getImsi",
+				INS:  0x02,
+				Response: &Message{Fields: []Field{
+					{Name: "imsi", Type: FieldTypeASCII},
+				}},
+			},
+		},
+	}
+
+	result, err := GenerateJavaSkeleton(s, "io.example.demo")
+	if err != nil {
+		t.Fatalf("GenerateJavaSkeleton returned error: %v", err)
+	}
+
+	src := string(result.SkeletonSource)
+	if !strings.Contains(src, "byte[] imsi = slice(requestData, 0, 15);") {
+		t.Fatalf("generated java skeleton missing fixed-length ascii request decoding:\n%s", src)
+	}
+	if !strings.Contains(src, "protected abstract void onSetImsi(byte[] imsi);") {
+		t.Fatalf("generated java skeleton missing ascii request abstract method:\n%s", src)
+	}
+	if !strings.Contains(src, "protected abstract byte[] onGetImsi();") {
+		t.Fatalf("generated java skeleton missing ascii response abstract method:\n%s", src)
+	}
+}
+
+func TestGenerateJavaSkeletonSupportsStringFields(t *testing.T) {
+	s := &Schema{
+		Applet: Applet{
+			Name: "Demo",
+			AID:  "A000000001",
+			CLA:  0x80,
+		},
+		Methods: map[string]*Method{
+			"echoMessage": {
+				Name: "echoMessage",
+				INS:  0x01,
+				Request: &Message{Fields: []Field{
+					{Name: "message", Type: FieldTypeString, Location: ParameterLocationData},
+				}},
+				Response: &Message{Fields: []Field{
+					{Name: "message", Type: FieldTypeString},
+				}},
+			},
+		},
+	}
+
+	result, err := GenerateJavaSkeleton(s, "io.example.demo")
+	if err != nil {
+		t.Fatalf("GenerateJavaSkeleton returned error: %v", err)
+	}
+
+	src := string(result.SkeletonSource)
+	if !strings.Contains(src, "byte[] message = slice(requestData, 0, requestData.length - 0);") {
+		t.Fatalf("generated java skeleton missing variable-length string request decoding:\n%s", src)
+	}
+	if !strings.Contains(src, "protected abstract byte[] onEchoMessage(byte[] message);") {
+		t.Fatalf("generated java skeleton missing string abstract method:\n%s", src)
+	}
+}
+
 func lineDiff(want, got []byte) string {
 	wantLines := strings.Split(string(want), "\n")
 	gotLines := strings.Split(string(got), "\n")

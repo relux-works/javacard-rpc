@@ -56,25 +56,6 @@ struct CounterE2E {
             }
         }
 
-        func parseTLV(_ data: Data) throws -> [UInt8: Data] {
-            var out: [UInt8: Data] = [:]
-            var offset = 0
-            while offset < data.count {
-                guard offset + 2 <= data.count else {
-                    throw TestError.assertion("truncated TLV header")
-                }
-                let tag = data[offset]
-                let len = Int(data[offset + 1])
-                offset += 2
-                guard offset + len <= data.count else {
-                    throw TestError.assertion("truncated TLV value")
-                }
-                out[tag] = data.subdata(in: offset..<(offset + len))
-                offset += len
-            }
-            return out
-        }
-
         func expectPrefix(_ actual: Data, _ prefix: [UInt8], _ msg: String) throws {
             let expected = Data(prefix)
             guard actual.count >= expected.count, actual.prefix(expected.count) == expected else {
@@ -197,18 +178,19 @@ struct CounterE2E {
         // Test 11: getImsi() → ASCII digits
         await test("11. getImsi() → ASCII digits") {
             let imsi = try await counter.getImsi()
-            try expectData(imsi, Data("250011234567890".utf8), "imsi")
+            try expect(imsi, "250011234567890", "imsi")
         }
 
-        // Test 12: getAppletInfo() → mock TLV payload
-        await test("12. getAppletInfo() → expected TLV payload") {
+        // Test 12: getAppletInfo() → typed metadata payload
+        await test("12. getAppletInfo() → typed metadata payload") {
             let info = try await counter.getAppletInfo()
-            let tlv = try parseTLV(info)
-            try expectData(tlv[0x01] ?? Data(), Data([0x01]), "schemaVersion")
-            try expectData(tlv[0x02] ?? Data(), Data([0xF0, 0x00, 0x00, 0x01, 0x01]), "appletAid")
-            try expectData(tlv[0x03] ?? Data(), Data("1.0.0".utf8), "appletVersion")
-            try expectData(tlv[0x04] ?? Data(), Data([0x01]), "keyAlgorithm")
-            try expectData(tlv[0x05] ?? Data(), Data([0x00, 0x3F]), "capabilities")
+            try expect(info.schemaVersion, 0x01, "schemaVersion")
+            try expectData(info.appletAid, Data([0xF0, 0x00, 0x00, 0x01, 0x01]), "appletAid")
+            try expect(info.versionMajor, 0x01, "versionMajor")
+            try expect(info.versionMinor, 0x00, "versionMinor")
+            try expect(info.versionPatch, 0x00, "versionPatch")
+            try expect(info.keyAlgorithm, 0x01, "keyAlgorithm")
+            try expect(info.capabilities, 0x003F, "capabilities")
         }
 
         // Test 13: signChallenge() → deterministic mock DER
@@ -225,15 +207,28 @@ struct CounterE2E {
             try await expectSW({ try await counter.signChallenge(challenge: Data()) }, sw: 0x6700)
         }
 
-        // Test 15: reset() → get() → 0
-        await test("15. reset() → get() → 0") {
+        // Test 15: getDisplayName() → UTF-8 string assembled by applet
+        await test("15. getDisplayName() → UTF-8 string") {
+            let displayName = try await counter.getDisplayName()
+            try expect(displayName, "Привет, BSim", "displayName")
+        }
+
+        // Test 16: echoMessage() → UTF-8 roundtrip
+        await test("16. echoMessage() → UTF-8 roundtrip") {
+            let message = "Привет, BSim 🚀"
+            let echoed = try await counter.echoMessage(message: message)
+            try expect(echoed, message, "echoMessage")
+        }
+
+        // Test 17: reset() → get() → 0
+        await test("17. reset() → get() → 0") {
             try await counter.reset()
             let v = try await counter.get()
             try expect(v, UInt16(0), "get after reset")
         }
 
-        // Test 16: store(128 bytes) → OK, load() → same
-        await test("16. store(128 bytes max) → load() roundtrip") {
+        // Test 18: store(128 bytes) → OK, load() → same
+        await test("18. store(128 bytes max) → load() roundtrip") {
             let data = Data((0..<128).map { UInt8($0) })
             try await counter.store(data: data)
             let loaded = try await counter.load()

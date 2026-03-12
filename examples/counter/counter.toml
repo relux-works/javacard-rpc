@@ -71,13 +71,21 @@ fields = [{ name = "spki", type = "bytes[91]" }]
 ins = 0x0A
 description = "Return mock IMSI bytes as ASCII digits"
 [methods.getImsi.response]
-fields = [{ name = "imsi", type = "bytes" }]
+fields = [{ name = "imsi", type = "ascii" }]
 
 [methods.getAppletInfo]
 ins = 0x0B
-description = "Return mock TLV applet metadata payload"
+description = "Return mock typed applet metadata"
 [methods.getAppletInfo.response]
-fields = [{ name = "info", type = "bytes" }]
+fields = [
+    { name = "schemaVersion", type = "u8" },
+    { name = "appletAid", type = "bytes[5]" },
+    { name = "versionMajor", type = "u8" },
+    { name = "versionMinor", type = "u8" },
+    { name = "versionPatch", type = "u8" },
+    { name = "keyAlgorithm", type = "u8" },
+    { name = "capabilities", type = "u16" }
+]
 
 [methods.signChallenge]
 ins = 0x0C
@@ -86,6 +94,20 @@ description = "Return deterministic mock DER signature bytes for the provided ch
 fields = [{ name = "challenge", type = "bytes" }]
 [methods.signChallenge.response]
 fields = [{ name = "signature", type = "bytes" }]
+
+[methods.getDisplayName]
+ins = 0x0D
+description = "Return a UTF-8 display name assembled by the applet"
+[methods.getDisplayName.response]
+fields = [{ name = "displayName", type = "string" }]
+
+[methods.echoMessage]
+ins = 0x0E
+description = "Roundtrip an arbitrary UTF-8 string through the applet"
+[methods.echoMessage.request]
+fields = [{ name = "message", type = "string" }]
+[methods.echoMessage.response]
+fields = [{ name = "message", type = "string" }]
 
 [status_words]
 SW_UNDERFLOW = { code = 0x6985, description = "Counter would go below zero" }

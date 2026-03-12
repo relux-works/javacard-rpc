@@ -123,12 +123,12 @@ func validateMessage(path string, msg *Message, isRequest bool, add func(path, m
 		}
 
 		if !isKnownFieldType(f.Type) {
-			add(fieldPath+".type", fmt.Sprintf("unsupported field type %q (expected u8, u16, u32, bool, bytes, or bytes[N])", f.Type))
+			add(fieldPath+".type", fmt.Sprintf("unsupported field type %q (expected u8, u16, u32, bool, ascii, string, bytes, or bytes[N])", f.Type))
 		}
 
 		if f.Length != nil {
-			if f.Type != FieldTypeBytes {
-				add(fieldPath+".length", "only supported for bytes fields")
+			if f.Type != FieldTypeBytes && f.Type != FieldTypeASCII {
+				add(fieldPath+".length", "only supported for bytes and ascii fields")
 			}
 			if *f.Length <= 0 {
 				add(fieldPath+".length", "must be > 0")
@@ -229,7 +229,7 @@ func isIdentifier(name string) bool {
 
 func isKnownFieldType(t FieldType) bool {
 	switch t {
-	case FieldTypeU8, FieldTypeU16, FieldTypeU32, FieldTypeBool, FieldTypeBytes, FieldTypeBytesFixed:
+	case FieldTypeU8, FieldTypeU16, FieldTypeU32, FieldTypeBool, FieldTypeASCII, FieldTypeString, FieldTypeBytes, FieldTypeBytesFixed:
 		return true
 	default:
 		return false

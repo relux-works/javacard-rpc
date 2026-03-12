@@ -54,18 +54,6 @@ class CounterAppletTest {
         }
     }
 
-    private fun parseTlv(data: ByteArray): Map<Int, ByteArray> {
-        val out = linkedMapOf<Int, ByteArray>()
-        var off = 0
-        while (off < data.size) {
-            val tag = data[off++].toInt() and 0xFF
-            val len = data[off++].toInt() and 0xFF
-            out[tag] = data.copyOfRange(off, off + len)
-            off += len
-        }
-        return out
-    }
-
     private fun expectedMockSignature(challenge: ByteArray, counter: Int, limit: Int): ByteArray {
         val partLen = minOf(challenge.size, 8)
         val out = ByteArray(2 + 2 + partLen + 2 + partLen)
@@ -310,15 +298,24 @@ class CounterAppletTest {
         }
 
         @Test
-        fun `getAppletInfo returns expected tlv`() {
+        fun `getDisplayName returns utf8 text`() {
+            val resp = send(0x0D, le = 64)
+            assertEquals(0x9000, resp.sw)
+            assertContentEquals("Привет, BSim".toByteArray(), resp.data)
+        }
+
+        @Test
+        fun `getAppletInfo returns typed metadata fields`() {
             val resp = send(0x0B, le = 64)
             assertEquals(0x9000, resp.sw)
-            val tlv = parseTlv(resp.data)
-            assertContentEquals(byteArrayOf(0x01), tlv[0x01])
-            assertContentEquals(byteArrayOf(0xF0.toByte(), 0x00, 0x00, 0x01, 0x01), tlv[0x02])
-            assertEquals("1.0.0", tlv[0x03]!!.toString(Charsets.US_ASCII))
-            assertContentEquals(byteArrayOf(0x01), tlv[0x04])
-            assertContentEquals(byteArrayOf(0x00, 0x3F), tlv[0x05])
+            assertEquals(12, resp.data.size)
+            assertEquals(0x01, resp.data[0].toInt() and 0xFF)
+            assertContentEquals(byteArrayOf(0xF0.toByte(), 0x00, 0x00, 0x01, 0x01), resp.data.copyOfRange(1, 6))
+            assertEquals(0x01, resp.data[6].toInt() and 0xFF)
+            assertEquals(0x00, resp.data[7].toInt() and 0xFF)
+            assertEquals(0x00, resp.data[8].toInt() and 0xFF)
+            assertEquals(0x01, resp.data[9].toInt() and 0xFF)
+            assertEquals(0x003F, readU16(resp.data, 10))
         }
 
         @Test
@@ -335,6 +332,14 @@ class CounterAppletTest {
         fun `signChallenge with empty payload returns SW_EMPTY_CHALLENGE`() {
             val resp = send(0x0C, data = byteArrayOf())
             assertEquals(0x6700, resp.sw)
+        }
+
+        @Test
+        fun `echoMessage roundtrips utf8 payload`() {
+            val message = "Привет, BSim 🚀".toByteArray()
+            val resp = send(0x0E, data = message)
+            assertEquals(0x9000, resp.sw)
+            assertContentEquals(message, resp.data)
         }
     }
 

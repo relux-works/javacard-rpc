@@ -75,6 +75,8 @@ Message shape:
 | `u16` | 2 bytes | Unsigned 16-bit integer, big-endian. |
 | `u32` | 4 bytes | Unsigned 32-bit integer, big-endian. |
 | `bool` | 1 byte | Boolean encoded as `0x00=false`, `0x01=true`. |
+| `ascii` | variable | ASCII string encoded as raw 7-bit bytes. |
+| `string` | variable | Variable-length UTF-8 string encoded in response/request data. |
 | `bytes` | variable | Variable-length byte array. |
 | `bytes[N]` | `N` bytes | Fixed-length byte array (`N > 0`). |
 
@@ -85,14 +87,16 @@ Each field object in `fields = [...]` uses:
 | Key | Type | Required | Rules |
 |---|---|---|---|
 | `name` | string | yes | Must match identifier regex: `^[A-Za-z][A-Za-z0-9_]*$`. |
-| `type` | string | yes | One of `u8`, `u16`, `u32`, `bool`, `bytes`, `bytes[N]`. |
+| `type` | string | yes | One of `u8`, `u16`, `u32`, `bool`, `ascii`, `string`, `bytes`, `bytes[N]`. |
 | `location` | string | no | `p1`, `p2`, or `data` (case-insensitive). |
-| `length` | integer | no | Only valid when `type = "bytes"`; must be `> 0`. |
+| `length` | integer | no | Only valid when `type = "bytes"` or `type = "ascii"`; must be `> 0`. |
 
 Notes:
 
 - `bytes[N]` and `bytes + length` are both parsed as fixed-size byte payloads.
-- `length` is invalid for non-`bytes` types.
+- `ascii + length` is parsed as a fixed-size ASCII payload.
+- `string` is always dynamic-length UTF-8 and does not support `length`.
+- `length` is invalid for non-`bytes` and non-`ascii` types.
 - For `bytes[N]`, `N` must be greater than zero.
 
 ## 6. Parameter Location Inference Rules
@@ -119,7 +123,7 @@ If no field has explicit `location`:
 ### 6.3 Location/type compatibility
 
 - `p1` and `p2` locations are only valid for `u8` or `bool`.
-- `u16`, `u32`, `bytes`, `bytes[N]` must be carried in data.
+- `u16`, `u32`, `ascii`, `string`, `bytes`, `bytes[N]` must be carried in data.
 
 ## 7. `[status_words]` Section (Optional)
 
@@ -154,8 +158,8 @@ The following semantic checks are enforced:
 6. Method names must be valid identifiers.
 7. `ins` values must be byte-sized, unique, and not in reserved ranges `0x60..0x6F` / `0x90..0x9F`.
 8. Field names must be valid identifiers.
-9. Field type must be one of `u8`, `u16`, `u32`, `bool`, `bytes`, `bytes[N]`.
-10. `length` is allowed only for `bytes` and must be `> 0`.
+9. Field type must be one of `u8`, `u16`, `u32`, `bool`, `ascii`, `string`, `bytes`, `bytes[N]`.
+10. `length` is allowed only for `bytes` and `ascii`, and must be `> 0`.
 11. For `bytes[N]`, `N` must be `> 0`.
 12. `location` must be one of `p1`, `p2`, `data` when present.
 13. `p1`/`p2` fields must be `u8` or `bool`.
@@ -168,7 +172,7 @@ The following semantic checks are enforced:
 ## 9. Complete Annotated `counter.toml` Example
 
 `examples/counter/counter.toml` in this repository currently contains a subset.
-For full type coverage (`u32`, `bool`, `bytes[N]`), parser/validator tests use `codegen/testdata/counter.toml`.
+For broad type coverage (`u32`, `bool`, `bytes[N]`), parser/validator tests use `codegen/testdata/counter.toml`, while targeted parser/validator tests cover `ascii` and `string`.
 The annotated example below is the full tested variant.
 
 ```toml
@@ -256,9 +260,23 @@ description = "Enable or disable counter"
 [methods.setEnabled.request]
 fields = [{ name = "enabled", type = "bool" }]
 
+# Variable-length ASCII response.
+[methods.getImsi]
+ins = 0x0B
+description = "Return IMSI digits"
+[methods.getImsi.response]
+fields = [{ name = "imsi", type = "ascii" }]
+
+# Variable-length UTF-8 string response.
+[methods.getDisplayName]
+ins = 0x0C
+description = "Return a localized display name"
+[methods.getDisplayName.response]
+fields = [{ name = "displayName", type = "string" }]
+
 # Fixed-size bytes response using bytes[N].
 [methods.getHash]
-ins = 0x0B
+ins = 0x0D
 description = "Get SHA-256 hash of stored data"
 [methods.getHash.response]
 fields = [{ name = "hash", type = "bytes[32]" }]
@@ -275,7 +293,7 @@ SW_DATA_TOO_LONG = { code = 0x6A80, description = "Data exceeds max size" }
 
 - The IDL surface is compact: `applet`, `methods`, optional `status_words`.
 - Request location inference is intentionally narrow: only the exact `1x` or `2x` (`u8`/`bool`) cases map to `p1`/`p2`; all other implicit cases go to data.
-- `bool`, `u32`, and `bytes[N]` are first-class types.
+- `bool`, `u32`, `ascii`, `string`, and `bytes[N]` are first-class types.
 - Status words are constrained to ISO 7816 ranges `0x6000..0x6FFF` and `0x9000..0x9FFF`.
 - Parser rejects unknown keys, so schemas are closed-world and typo-resistant.
 
@@ -284,7 +302,7 @@ SW_DATA_TOO_LONG = { code = 0x6A80, description = "Data exceeds max size" }
 | Claim | Verified In |
 |---|---|
 | Root sections and model structure (`applet`, `methods`, `status_words`) | `codegen/model.go:4-8` |
-| Supported field types include `u8/u16/u32/bool/bytes/bytes[N]` | `codegen/model.go:36-43`, `codegen/parser.go:258-275`, `codegen/validator.go:125-138` |
+| Supported field types include `u8/u16/u32/bool/ascii/string/bytes/bytes[N]` | `codegen/model.go`, `codegen/parser.go`, `codegen/validator.go` |
 | Unknown TOML keys are rejected | `codegen/parser.go:67-74` |
 | Request location inference algorithm (explicit mode, 1-field, 2-field, fallback-to-data) | `codegen/parser.go:198-256` |
 | `location` accepted values are `p1`, `p2`, `data` (case-insensitive) | `codegen/parser.go:281-291` |
@@ -293,5 +311,4 @@ SW_DATA_TOO_LONG = { code = 0x6A80, description = "Data exceeds max size" }
 | `ins` uniqueness + reserved ranges | `codegen/validator.go:96-104`, `codegen/validator.go:243-245` |
 | `p1/p2` allowed only for `u8`/`bool` and duplicate `p1/p2` is invalid | `codegen/validator.go:145-166`, `codegen/validator.go:239-241` |
 | Status word valid ranges are `0x6000..0x6FFF` or `0x9000..0x9FFF`, codes unique | `codegen/validator.go:196-204`, `codegen/validator.go:247-249` |
-| Full counter example with `u32`, `bool`, `bytes[32]` is present in test fixture and expected by parser tests | `codegen/testdata/counter.toml:62-78`, `codegen/parser_test.go:41-44`, `codegen/parser_test.go:114-123` |
-
+| Full counter example with `u32`, `bool`, `bytes[32]` is present in test fixture, and targeted tests cover `ascii` and `string` | `codegen/testdata/counter.toml`, `codegen/parser_test.go`, `codegen/validator_test.go` |

@@ -38,6 +38,8 @@ const (
 	FieldTypeU16        FieldType = "u16"
 	FieldTypeU32        FieldType = "u32"
 	FieldTypeBool       FieldType = "bool"
+	FieldTypeASCII      FieldType = "ascii"
+	FieldTypeString     FieldType = "string"
 	FieldTypeBytes      FieldType = "bytes"
 	FieldTypeBytesFixed FieldType = "bytes_fixed"
 )
@@ -75,6 +77,13 @@ func (f Field) WireSize() (int, bool) {
 		if f.FixedLength > 0 {
 			return f.FixedLength, true
 		}
+		return 0, false
+	case FieldTypeASCII:
+		if f.Length != nil && *f.Length > 0 {
+			return *f.Length, true
+		}
+		return 0, false
+	case FieldTypeString:
 		return 0, false
 	case FieldTypeBytes:
 		if f.Length != nil && *f.Length > 0 {

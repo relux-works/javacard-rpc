@@ -206,6 +206,114 @@ func TestParseMalformedTOMLReturnsDescriptiveError(t *testing.T) {
 	}
 }
 
+func TestParseASCIIFieldWithLength(t *testing.T) {
+	input := `
+[applet]
+name = "Demo"
+version = "1.0.0"
+aid = "A000000001"
+cla = 0x80
+
+[methods.setImsi]
+ins = 0x01
+[methods.setImsi.request]
+fields = [{ name = "imsi", type = "ascii", length = 15 }]
+
+[methods.getImsi]
+ins = 0x02
+[methods.getImsi.response]
+fields = [{ name = "imsi", type = "ascii" }]
+`
+
+	s, err := Parse(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+
+	setImsi := s.Methods["setImsi"].Request.Fields[0]
+	if setImsi.Type != FieldTypeASCII {
+		t.Fatalf("setImsi field type mismatch: got %q want %q", setImsi.Type, FieldTypeASCII)
+	}
+	if setImsi.Length == nil || *setImsi.Length != 15 {
+		t.Fatalf("setImsi field length mismatch: got %#v want 15", setImsi.Length)
+	}
+	if setImsi.Location != ParameterLocationData {
+		t.Fatalf("setImsi field location mismatch: got %q want %q", setImsi.Location, ParameterLocationData)
+	}
+
+	getImsi := s.Methods["getImsi"].Response.Fields[0]
+	if getImsi.Type != FieldTypeASCII {
+		t.Fatalf("getImsi field type mismatch: got %q want %q", getImsi.Type, FieldTypeASCII)
+	}
+	if getImsi.Length != nil {
+		t.Fatalf("getImsi field length mismatch: got %#v want nil", getImsi.Length)
+	}
+}
+
+func TestParseStringFieldWithoutLength(t *testing.T) {
+	input := `
+[applet]
+name = "Demo"
+version = "1.0.0"
+aid = "A000000001"
+cla = 0x80
+
+[methods.echoMessage]
+ins = 0x01
+[methods.echoMessage.request]
+fields = [{ name = "message", type = "string" }]
+[methods.echoMessage.response]
+fields = [{ name = "message", type = "string" }]
+`
+
+	s, err := Parse(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+
+	requestField := s.Methods["echoMessage"].Request.Fields[0]
+	if requestField.Type != FieldTypeString {
+		t.Fatalf("request field type mismatch: got %q want %q", requestField.Type, FieldTypeString)
+	}
+	if requestField.Length != nil {
+		t.Fatalf("request field length mismatch: got %#v want nil", requestField.Length)
+	}
+	if requestField.Location != ParameterLocationData {
+		t.Fatalf("request field location mismatch: got %q want %q", requestField.Location, ParameterLocationData)
+	}
+
+	responseField := s.Methods["echoMessage"].Response.Fields[0]
+	if responseField.Type != FieldTypeString {
+		t.Fatalf("response field type mismatch: got %q want %q", responseField.Type, FieldTypeString)
+	}
+	if responseField.Length != nil {
+		t.Fatalf("response field length mismatch: got %#v want nil", responseField.Length)
+	}
+}
+
+func TestParseRejectsStringLength(t *testing.T) {
+	input := `
+[applet]
+name = "Demo"
+version = "1.0.0"
+aid = "A000000001"
+cla = 0x80
+
+[methods.echoMessage]
+ins = 0x01
+[methods.echoMessage.response]
+fields = [{ name = "message", type = "string", length = 32 }]
+`
+
+	_, err := Parse(strings.NewReader(input))
+	if err == nil {
+		t.Fatalf("expected Parse to reject string length")
+	}
+	if !strings.Contains(err.Error(), "only supported for bytes and ascii fields") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func parseCounter(t *testing.T) *Schema {
 	t.Helper()
 
