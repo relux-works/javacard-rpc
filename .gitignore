@@ -12,6 +12,7 @@ build/
 .build/
 .gradle/
 out/
+.swiftpm/
 codegen/jcrpc-gen
 
 # IDE
@@ -30,4 +31,3 @@ Thumbs.db
 task-board.config.json
 .task-board/
 *.xcuserstate
-.swiftpm/xcode/xcuserdata/

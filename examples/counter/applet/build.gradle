@@ -1,5 +1,6 @@
 plugins {
     id 'java'
+    id 'org.jetbrains.kotlin.jvm' version '2.1.10'
 }
 
 group = 'io.jcrpc.counter'
@@ -14,6 +15,19 @@ tasks.withType(JavaCompile).configureEach {
     options.compilerArgs += ['-Xlint:-options']
 }
 
+tasks.named('compileKotlin') {
+    enabled = false
+}
+
+tasks.named('compileTestJava') {
+    sourceCompatibility = JavaVersion.VERSION_12
+    targetCompatibility = JavaVersion.VERSION_12
+}
+
+kotlin {
+    jvmToolchain(12)
+}
+
 repositories {
     mavenCentral()
 }
@@ -24,4 +38,18 @@ dependencies {
     // jCardSim provides javacard.framework classes (for CounterJCApplet adapter)
     implementation 'com.klinec:jcardsim:3.0.5.9'
     implementation files('libs/smartcardio.jar')
+
+    testImplementation 'org.jetbrains.kotlin:kotlin-test-junit5'
+    testImplementation platform('org.junit:junit-bom:5.11.4')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+test {
+    useJUnitPlatform()
+    jvmArgs '--add-modules', 'java.smartcardio'
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+        showStandardStreams = true
+    }
 }

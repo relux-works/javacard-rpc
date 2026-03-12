@@ -25,7 +25,7 @@ class CounterAppletTest {
     @BeforeEach
     fun setUp() {
         sim = CardSimulator()
-        sim.installApplet(appletAid, CounterApplet::class.java)
+        sim.installApplet(appletAid, CounterJCApplet::class.java)
         sim.selectApplet(appletAid)
     }
 
@@ -44,6 +44,49 @@ class CounterAppletTest {
 
     private fun readU16(data: ByteArray, offset: Int = 0): Int {
         return ((data[offset].toInt() and 0xFF) shl 8) or (data[offset + 1].toInt() and 0xFF)
+    }
+
+    private fun readBool(data: ByteArray, offset: Int): Boolean {
+        return when (data[offset].toInt() and 0xFF) {
+            0x00 -> false
+            0x01 -> true
+            else -> error("invalid bool encoding at offset $offset")
+        }
+    }
+
+    private fun parseTlv(data: ByteArray): Map<Int, ByteArray> {
+        val out = linkedMapOf<Int, ByteArray>()
+        var off = 0
+        while (off < data.size) {
+            val tag = data[off++].toInt() and 0xFF
+            val len = data[off++].toInt() and 0xFF
+            out[tag] = data.copyOfRange(off, off + len)
+            off += len
+        }
+        return out
+    }
+
+    private fun expectedMockSignature(challenge: ByteArray, counter: Int, limit: Int): ByteArray {
+        val partLen = minOf(challenge.size, 8)
+        val out = ByteArray(2 + 2 + partLen + 2 + partLen)
+        out[0] = 0x30
+        out[1] = (out.size - 2).toByte()
+        out[2] = 0x02
+        out[3] = partLen.toByte()
+        for (i in 0 until partLen) {
+            out[4 + i] = (challenge[i].toInt() xor 0x01 xor counter).toByte()
+        }
+        out[4] = (out[4].toInt() and 0x7F).toByte()
+
+        val secondOff = 4 + partLen
+        out[secondOff] = 0x02
+        out[secondOff + 1] = partLen.toByte()
+        for (i in 0 until partLen) {
+            val srcIndex = challenge.size - 1 - i
+            out[secondOff + 2 + i] = (challenge[srcIndex].toInt() xor limit xor 0x5A).toByte()
+        }
+        out[secondOff + 2] = (out[secondOff + 2].toInt() and 0x7F).toByte()
+        return out
     }
 
     // --- SELECT ---
@@ -212,23 +255,86 @@ class CounterAppletTest {
         fun `getInfo returns value, limit, version`() {
             send(0x01, p1 = 7)
             send(0x05, data = byteArrayOf(0x00, 0x64)) // limit = 100
+            send(0x07, data = "blob".toByteArray())
             val resp = send(0x06, le = 5)
 
             assertEquals(0x9000, resp.sw)
-            assertEquals(5, resp.data.size)
+            assertEquals(7, resp.data.size)
             assertEquals(7, readU16(resp.data, 0))     // value
             assertEquals(100, readU16(resp.data, 2))    // limit
             assertEquals(0x01, resp.data[4].toInt() and 0xFF) // version
+            assertEquals(true, readBool(resp.data, 5))
+            assertEquals(false, readBool(resp.data, 6))
         }
 
         @Test
         fun `getInfo default state`() {
             val resp = send(0x06, le = 5)
             assertEquals(0x9000, resp.sw)
-            assertEquals(5, resp.data.size)
+            assertEquals(7, resp.data.size)
             assertEquals(0, readU16(resp.data, 0))        // value = 0
             assertEquals(0x7FFF, readU16(resp.data, 2))   // default limit
             assertEquals(0x01, resp.data[4].toInt() and 0xFF) // version
+            assertEquals(false, readBool(resp.data, 5))
+            assertEquals(false, readBool(resp.data, 6))
+        }
+
+        @Test
+        fun `getInfo reports at limit`() {
+            send(0x05, data = byteArrayOf(0x00, 0x05))
+            send(0x01, p1 = 5)
+            val resp = send(0x06, le = 7)
+            assertEquals(true, readBool(resp.data, 6))
+        }
+    }
+
+    // --- AUTH-LIKE METADATA ---
+
+    @Nested
+    inner class AuthLikeMethods {
+
+        @Test
+        fun `getSpki returns fixed 91-byte DER payload`() {
+            val resp = send(0x09, le = 128)
+            assertEquals(0x9000, resp.sw)
+            assertEquals(91, resp.data.size)
+            assertContentEquals(byteArrayOf(0x30, 0x59, 0x30, 0x13), resp.data.copyOfRange(0, 4))
+            assertEquals(0x04, resp.data[26].toInt() and 0xFF)
+        }
+
+        @Test
+        fun `getImsi returns ascii digits`() {
+            val resp = send(0x0A, le = 32)
+            assertEquals(0x9000, resp.sw)
+            assertContentEquals("250011234567890".toByteArray(), resp.data)
+        }
+
+        @Test
+        fun `getAppletInfo returns expected tlv`() {
+            val resp = send(0x0B, le = 64)
+            assertEquals(0x9000, resp.sw)
+            val tlv = parseTlv(resp.data)
+            assertContentEquals(byteArrayOf(0x01), tlv[0x01])
+            assertContentEquals(byteArrayOf(0xF0.toByte(), 0x00, 0x00, 0x01, 0x01), tlv[0x02])
+            assertEquals("1.0.0", tlv[0x03]!!.toString(Charsets.US_ASCII))
+            assertContentEquals(byteArrayOf(0x01), tlv[0x04])
+            assertContentEquals(byteArrayOf(0x00, 0x3F), tlv[0x05])
+        }
+
+        @Test
+        fun `signChallenge returns deterministic mock der signature`() {
+            send(0x01, p1 = 6)
+            send(0x05, data = byteArrayOf(0x00, 0x0A))
+            val challenge = "auth-like-challenge".toByteArray()
+            val resp = send(0x0C, data = challenge)
+            assertEquals(0x9000, resp.sw)
+            assertContentEquals(expectedMockSignature(challenge, counter = 6, limit = 10), resp.data)
+        }
+
+        @Test
+        fun `signChallenge with empty payload returns SW_EMPTY_CHALLENGE`() {
+            val resp = send(0x0C, data = byteArrayOf())
+            assertEquals(0x6700, resp.sw)
         }
     }
 
@@ -371,11 +477,27 @@ class CounterAppletTest {
         fun `getInfo reflects all state changes`() {
             send(0x01, p1 = 25)
             send(0x05, data = byteArrayOf(0x01, 0x00)) // limit = 256
+            send(0x07, data = "test".toByteArray())
 
-            val resp = send(0x06, le = 5)
+            val resp = send(0x06, le = 7)
             assertEquals(25, readU16(resp.data, 0))
             assertEquals(256, readU16(resp.data, 2))
             assertEquals(0x01, resp.data[4].toInt() and 0xFF)
+            assertEquals(true, readBool(resp.data, 5))
+            assertEquals(false, readBool(resp.data, 6))
+        }
+
+        @Test
+        fun `auth-like methods coexist with counter storage flow`() {
+            send(0x07, data = "session blob".toByteArray())
+            val imsi = send(0x0A, le = 32)
+            val appletInfo = send(0x0B, le = 64)
+            val signature = send(0x0C, data = "hello".toByteArray())
+
+            assertEquals("250011234567890", imsi.data.toString(Charsets.US_ASCII))
+            assertEquals(0x9000, appletInfo.sw)
+            assertEquals(0x9000, signature.sw)
+            assertEquals(0x30, signature.data[0].toInt() and 0xFF)
         }
     }
 }

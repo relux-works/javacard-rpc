@@ -33,6 +33,10 @@ public class CounterJCApplet extends Applet {
             return;
         }
 
+        if (buf[ISO7816.OFFSET_CLA] != CounterSkeleton.CLA_COUNTER) {
+            ISOException.throwIt(ISO7816.SW_CLA_NOT_SUPPORTED);
+        }
+
         byte ins = buf[ISO7816.OFFSET_INS];
         byte p1 = buf[ISO7816.OFFSET_P1];
         byte p2 = buf[ISO7816.OFFSET_P2];
