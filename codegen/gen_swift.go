@@ -265,6 +265,22 @@ func buildRequestSpec(methodName string, req *Message) (
 	if len(dataFields) == 1 {
 		f := dataFields[0]
 		switch f.Type {
+		case FieldTypeASCII:
+			lines := []string{
+				fmt.Sprintf("let data = try Self.asciiData(from: %s)", f.Name),
+			}
+			if f.Length != nil {
+				lines = append(lines, fmt.Sprintf("if data.count != %d { throw TransportError.invalidResponse }", *f.Length))
+			}
+			return params, p1Expr, p2Expr, lines, "data", true, nil
+		case FieldTypeString:
+			if f.Length != nil {
+				return nil, "", "", nil, "", false, fmt.Errorf("method %q request field %q: string field does not support fixed length", methodName, f.Name)
+			}
+			lines := []string{
+				fmt.Sprintf("let data = try Self.utf8Data(from: %s)", f.Name),
+			}
+			return params, p1Expr, p2Expr, lines, "data", true, nil
 		case FieldTypeBytes:
 			return params, p1Expr, p2Expr, nil, f.Name, true, nil
 		case FieldTypeBytesFixed:
@@ -321,6 +337,20 @@ func buildRequestSpec(methodName string, req *Message) (
 			)
 		case FieldTypeBytes:
 			dataPrepLines = append(dataPrepLines, fmt.Sprintf("data.append(%s)", f.Name))
+		case FieldTypeASCII:
+			asciiDataName := f.Name + "ASCIIData"
+			dataPrepLines = append(dataPrepLines, fmt.Sprintf("let %s = try Self.asciiData(from: %s)", asciiDataName, f.Name))
+			if f.Length != nil {
+				dataPrepLines = append(dataPrepLines, fmt.Sprintf("if %s.count != %d { throw TransportError.invalidResponse }", asciiDataName, *f.Length))
+			}
+			dataPrepLines = append(dataPrepLines, fmt.Sprintf("data.append(%s)", asciiDataName))
+		case FieldTypeString:
+			if f.Length != nil {
+				return nil, "", "", nil, "", false, fmt.Errorf("method %q request field %q: string field does not support fixed length", methodName, f.Name)
+			}
+			utf8DataName := f.Name + "UTF8Data"
+			dataPrepLines = append(dataPrepLines, fmt.Sprintf("let %s = try Self.utf8Data(from: %s)", utf8DataName, f.Name))
+			dataPrepLines = append(dataPrepLines, fmt.Sprintf("data.append(%s)", utf8DataName))
 		case FieldTypeBytesFixed:
 			if f.FixedLength <= 0 {
 				return nil, "", "", nil, "", false, fmt.Errorf("method %q request field %q: fixed-length bytes field must have length > 0", methodName, f.Name)
@@ -422,6 +452,22 @@ func responseReadExpr(field Field, offset int, isLast bool) (string, int, error)
 			return "", 0, fmt.Errorf("fixed-length bytes field must have length > 0")
 		}
 		return fmt.Sprintf("try Self.readBytes(from: respData, at: %d, count: %d)", offset, field.FixedLength), offset + field.FixedLength, nil
+	case FieldTypeASCII:
+		if field.Length != nil {
+			return fmt.Sprintf("try Self.readASCII(from: respData, at: %d, count: %d)", offset, *field.Length), offset + *field.Length, nil
+		}
+		if !isLast {
+			return "", 0, fmt.Errorf("variable-length ascii field must be the last response field")
+		}
+		return fmt.Sprintf("try Self.readASCII(from: respData, at: %d)", offset), offset, nil
+	case FieldTypeString:
+		if field.Length != nil {
+			return "", 0, fmt.Errorf("string field does not support fixed length")
+		}
+		if !isLast {
+			return "", 0, fmt.Errorf("variable-length string field must be the last response field")
+		}
+		return fmt.Sprintf("try Self.readString(from: respData, at: %d)", offset), offset, nil
 	case FieldTypeBytes:
 		if field.Length != nil {
 			return fmt.Sprintf("try Self.readBytes(from: respData, at: %d, count: %d)", offset, *field.Length), offset + *field.Length, nil
@@ -669,6 +715,10 @@ func swiftFieldType(fieldType FieldType) (string, error) {
 		return "UInt16", nil
 	case FieldTypeU32:
 		return "UInt32", nil
+	case FieldTypeASCII:
+		return "String", nil
+	case FieldTypeString:
+		return "String", nil
 	case FieldTypeBytes, FieldTypeBytesFixed:
 		return "Data", nil
 	default:
@@ -905,6 +955,42 @@ func buildTransportHelpersBlock() string {
 	b.WriteString("            throw TransportError.invalidResponse\n")
 	b.WriteString("        }\n")
 	b.WriteString("        return data.subdata(in: offset..<data.count)\n")
+	b.WriteString("    }\n\n")
+	b.WriteString("    private static func readASCII(from data: Data, at offset: Int, count: Int) throws -> String {\n")
+	b.WriteString("        let bytes = try readBytes(from: data, at: offset, count: count)\n")
+	b.WriteString("        return try decodeASCII(bytes)\n")
+	b.WriteString("    }\n\n")
+	b.WriteString("    private static func readASCII(from data: Data, at offset: Int) throws -> String {\n")
+	b.WriteString("        let bytes = try readBytes(from: data, at: offset)\n")
+	b.WriteString("        return try decodeASCII(bytes)\n")
+	b.WriteString("    }\n\n")
+	b.WriteString("    private static func decodeASCII(_ data: Data) throws -> String {\n")
+	b.WriteString("        guard let value = String(data: data, encoding: .ascii) else {\n")
+	b.WriteString("            throw TransportError.invalidResponse\n")
+	b.WriteString("        }\n")
+	b.WriteString("        return value\n")
+	b.WriteString("    }\n\n")
+	b.WriteString("    private static func asciiData(from value: String) throws -> Data {\n")
+	b.WriteString("        guard let data = value.data(using: .ascii) else {\n")
+	b.WriteString("            throw TransportError.invalidResponse\n")
+	b.WriteString("        }\n")
+	b.WriteString("        return data\n")
+	b.WriteString("    }\n\n")
+	b.WriteString("    private static func readString(from data: Data, at offset: Int) throws -> String {\n")
+	b.WriteString("        let bytes = try readBytes(from: data, at: offset)\n")
+	b.WriteString("        return try decodeUTF8(bytes)\n")
+	b.WriteString("    }\n\n")
+	b.WriteString("    private static func decodeUTF8(_ data: Data) throws -> String {\n")
+	b.WriteString("        guard let value = String(data: data, encoding: .utf8) else {\n")
+	b.WriteString("            throw TransportError.invalidResponse\n")
+	b.WriteString("        }\n")
+	b.WriteString("        return value\n")
+	b.WriteString("    }\n\n")
+	b.WriteString("    private static func utf8Data(from value: String) throws -> Data {\n")
+	b.WriteString("        guard let data = value.data(using: .utf8) else {\n")
+	b.WriteString("            throw TransportError.invalidResponse\n")
+	b.WriteString("        }\n")
+	b.WriteString("        return data\n")
 	b.WriteString("    }\n\n")
 	b.WriteString("    private static func ensureReadableRange(in data: Data, offset: Int, length: Int) throws {\n")
 	b.WriteString("        guard offset >= 0, length >= 0, offset <= data.count else {\n")

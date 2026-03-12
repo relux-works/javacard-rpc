@@ -186,6 +186,84 @@ func TestBuildRequestSpecBytesFixedMultiFieldValidation(t *testing.T) {
 	}
 }
 
+func TestGenerateSwiftClientSupportsASCIIFields(t *testing.T) {
+	s := &Schema{
+		Applet: Applet{
+			Name: "Demo",
+			AID:  "A000000001",
+			CLA:  0x80,
+		},
+		Methods: map[string]*Method{
+			"setImsi": {
+				Name: "setImsi",
+				INS:  0x01,
+				Request: &Message{Fields: []Field{
+					{Name: "imsi", Type: FieldTypeASCII, Length: intPtr(15), Location: ParameterLocationData},
+				}},
+			},
+			"getImsi": {
+				Name: "getImsi",
+				INS:  0x02,
+				Response: &Message{Fields: []Field{
+					{Name: "imsi", Type: FieldTypeASCII},
+				}},
+			},
+		},
+	}
+
+	got, err := GenerateSwiftClient(s, "demo")
+	if err != nil {
+		t.Fatalf("GenerateSwiftClient returned error: %v", err)
+	}
+
+	src := string(got)
+	requireContains(t, src, "public func setImsi(imsi: String) async throws")
+	requireContains(t, src, "let data = try Self.asciiData(from: imsi)")
+	requireContains(t, src, "if data.count != 15 { throw TransportError.invalidResponse }")
+	requireContains(t, src, "public func getImsi() async throws -> String")
+	requireContains(t, src, "return try Self.readASCII(from: respData, at: 0)")
+	requireContains(t, src, "private static func readASCII(from data: Data, at offset: Int) throws -> String")
+	requireContains(t, src, "private static func asciiData(from value: String) throws -> Data")
+}
+
+func TestGenerateSwiftClientSupportsStringFields(t *testing.T) {
+	s := &Schema{
+		Applet: Applet{
+			Name: "Demo",
+			AID:  "A000000001",
+			CLA:  0x80,
+		},
+		Methods: map[string]*Method{
+			"echoMessage": {
+				Name: "echoMessage",
+				INS:  0x01,
+				Request: &Message{Fields: []Field{
+					{Name: "message", Type: FieldTypeString, Location: ParameterLocationData},
+				}},
+				Response: &Message{Fields: []Field{
+					{Name: "message", Type: FieldTypeString},
+				}},
+			},
+		},
+	}
+
+	got, err := GenerateSwiftClient(s, "demo")
+	if err != nil {
+		t.Fatalf("GenerateSwiftClient returned error: %v", err)
+	}
+
+	src := string(got)
+	requireContains(t, src, "public func echoMessage(message: String) async throws -> String")
+	requireContains(t, src, "let data = try Self.utf8Data(from: message)")
+	requireContains(t, src, "return try Self.readString(from: respData, at: 0)")
+	requireContains(t, src, "private static func readString(from data: Data, at offset: Int) throws -> String")
+	requireContains(t, src, "private static func utf8Data(from value: String) throws -> Data")
+}
+
+func intPtr(v int) *int {
+	return &v
+}
+
 func equalStrings(got, want []string) bool {
 	if len(got) != len(want) {
 		return false

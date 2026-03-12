@@ -241,6 +241,59 @@ SW_OK = { code = 0x9000 }
 	}
 }
 
+func TestValidateAcceptsASCIIAndASCIIWithLength(t *testing.T) {
+	s := mustParseSchema(t, `
+[applet]
+name = "Demo"
+version = "1.0.0"
+aid = "A000000001"
+cla = 0x80
+
+[methods.setImsi]
+ins = 0x01
+[methods.setImsi.request]
+fields = [{ name = "imsi", type = "ascii", length = 15 }]
+
+[methods.getImsi]
+ins = 0x02
+[methods.getImsi.response]
+fields = [{ name = "imsi", type = "ascii" }]
+
+[status_words]
+SW_OK = { code = 0x9000 }
+`)
+
+	errs := Validate(s)
+	if len(errs) != 0 {
+		t.Fatalf("expected no validation errors, got %v", errs)
+	}
+}
+
+func TestValidateAcceptsStringWithoutLength(t *testing.T) {
+	s := mustParseSchema(t, `
+[applet]
+name = "Demo"
+version = "1.0.0"
+aid = "A000000001"
+cla = 0x80
+
+[methods.echoMessage]
+ins = 0x01
+[methods.echoMessage.request]
+fields = [{ name = "message", type = "string" }]
+[methods.echoMessage.response]
+fields = [{ name = "message", type = "string" }]
+
+[status_words]
+SW_OK = { code = 0x9000 }
+`)
+
+	errs := Validate(s)
+	if len(errs) != 0 {
+		t.Fatalf("expected no validation errors, got %v", errs)
+	}
+}
+
 func TestValidateRejectsBytesFixedLengthZero(t *testing.T) {
 	s := mustParseSchema(t, `
 [applet]
@@ -274,6 +327,34 @@ func TestValidateRejectsInvalidBytesLength(t *testing.T) {
 
 	errs := Validate(s)
 	requireValidationError(t, errs, "methods.echo.request.fields[0].length", "must be > 0")
+}
+
+func TestValidateRejectsASCIILengthZero(t *testing.T) {
+	s := validSchema(t)
+	zero := 0
+	s.Methods["echo"].Request.Fields = []Field{{
+		Name:     "imsi",
+		Type:     FieldTypeASCII,
+		Length:   &zero,
+		Location: ParameterLocationData,
+	}}
+
+	errs := Validate(s)
+	requireValidationError(t, errs, "methods.echo.request.fields[0].length", "must be > 0")
+}
+
+func TestValidateRejectsStringLength(t *testing.T) {
+	s := validSchema(t)
+	length := 8
+	s.Methods["echo"].Request.Fields = []Field{{
+		Name:     "message",
+		Type:     FieldTypeString,
+		Length:   &length,
+		Location: ParameterLocationData,
+	}}
+
+	errs := Validate(s)
+	requireValidationError(t, errs, "methods.echo.request.fields[0].length", "only supported for bytes and ascii fields")
 }
 
 func TestValidateRejectsP1TypeNotU8(t *testing.T) {

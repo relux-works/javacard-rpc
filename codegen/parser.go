@@ -162,8 +162,8 @@ func normalizeMessage(methodName, section string, raw rawMessage, isRequest bool
 		if err != nil {
 			return nil, fmt.Errorf("%s.type: %w", path, err)
 		}
-		if ft != FieldTypeBytes && rf.Length != nil {
-			return nil, fmt.Errorf("%s.length: only supported for bytes fields", path)
+		if ft != FieldTypeBytes && ft != FieldTypeASCII && rf.Length != nil {
+			return nil, fmt.Errorf("%s.length: only supported for bytes and ascii fields", path)
 		}
 		if rf.Length != nil && *rf.Length <= 0 {
 			return nil, fmt.Errorf("%s.length: must be > 0", path)
@@ -258,7 +258,7 @@ func assignRequestLocations(fields []Field) error {
 func parseFieldType(t string) (FieldType, int, error) {
 	trimmed := strings.TrimSpace(t)
 	switch FieldType(trimmed) {
-	case FieldTypeU8, FieldTypeU16, FieldTypeU32, FieldTypeBool, FieldTypeBytes:
+	case FieldTypeU8, FieldTypeU16, FieldTypeU32, FieldTypeBool, FieldTypeASCII, FieldTypeString, FieldTypeBytes:
 		return FieldType(trimmed), 0, nil
 	}
 

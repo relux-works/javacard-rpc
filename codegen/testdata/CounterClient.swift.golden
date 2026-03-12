@@ -254,6 +254,49 @@ public actor CounterClient: CounterClientProtocol {
         return data.subdata(in: offset..<data.count)
     }
 
+    private static func readASCII(from data: Data, at offset: Int, count: Int) throws -> String {
+        let bytes = try readBytes(from: data, at: offset, count: count)
+        return try decodeASCII(bytes)
+    }
+
+    private static func readASCII(from data: Data, at offset: Int) throws -> String {
+        let bytes = try readBytes(from: data, at: offset)
+        return try decodeASCII(bytes)
+    }
+
+    private static func decodeASCII(_ data: Data) throws -> String {
+        guard let value = String(data: data, encoding: .ascii) else {
+            throw TransportError.invalidResponse
+        }
+        return value
+    }
+
+    private static func asciiData(from value: String) throws -> Data {
+        guard let data = value.data(using: .ascii) else {
+            throw TransportError.invalidResponse
+        }
+        return data
+    }
+
+    private static func readString(from data: Data, at offset: Int) throws -> String {
+        let bytes = try readBytes(from: data, at: offset)
+        return try decodeUTF8(bytes)
+    }
+
+    private static func decodeUTF8(_ data: Data) throws -> String {
+        guard let value = String(data: data, encoding: .utf8) else {
+            throw TransportError.invalidResponse
+        }
+        return value
+    }
+
+    private static func utf8Data(from value: String) throws -> Data {
+        guard let data = value.data(using: .utf8) else {
+            throw TransportError.invalidResponse
+        }
+        return data
+    }
+
     private static func ensureReadableRange(in data: Data, offset: Int, length: Int) throws {
         guard offset >= 0, length >= 0, offset <= data.count else {
             throw TransportError.invalidResponse

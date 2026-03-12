@@ -51,7 +51,7 @@ response = [{ name = "value", type = "u16" }]
 UNDERFLOW = { code = "0x6985", description = "Counter would go negative" }
 ```
 
-Supported types: `u8`, `u16`, `u32`, `bool`, `bytes`, `bytes[N]`.
+Supported types: `u8`, `u16`, `u32`, `bool`, `ascii`, `string`, `bytes`, `bytes[N]`.
 
 See [IDL specification](references/idl-spec.md) for the full format.
 
@@ -104,6 +104,8 @@ javacard-rpc/
 ├── references/           # IDL specification
 └── scripts/              # Setup/teardown
 ```
+
+See [examples/counter/README.md](examples/counter/README.md) for the step-by-step walkthrough from `counter.toml` to generated client/server artifacts and the final E2E run.
 
 ## Runtime packages
 

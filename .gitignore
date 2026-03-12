@@ -19,6 +19,7 @@ codegen/jcrpc-gen
 .idea/
 *.iml
 .vscode/
+DerivedData/
 
 # OS
 .DS_Store

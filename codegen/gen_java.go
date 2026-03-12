@@ -243,10 +243,10 @@ type requestHandling struct {
 
 // JavaGenerationResult holds the generated Java source files.
 type JavaGenerationResult struct {
-	TransportSource  []byte // CounterTransport.java
-	SkeletonSource   []byte // CounterSkeleton.java
-	TransportName    string // e.g. "CounterTransport"
-	SkeletonName     string // e.g. "CounterSkeleton"
+	TransportSource []byte // CounterTransport.java
+	SkeletonSource  []byte // CounterSkeleton.java
+	TransportName   string // e.g. "CounterTransport"
+	SkeletonName    string // e.g. "CounterSkeleton"
 }
 
 // GenerateJavaSkeleton renders a Java Card abstract applet skeleton from a validated schema.
@@ -436,7 +436,7 @@ func renderMethod(name string, m *Method) (javaMethodRender, error) {
 		)
 		mr.ResponseKind = responseKindPrimitive
 		return mr, nil
-	case len(responseFields) == 1 && (responseFields[0].Type == FieldTypeBytes || responseFields[0].Type == FieldTypeBytesFixed):
+	case len(responseFields) == 1 && isByteSequenceField(responseFields[0]):
 		mr.AbstractReturn = "byte[]"
 		mr.AbstractParams = request.ParamDecls
 		mr.HasHandler = true
@@ -444,13 +444,13 @@ func renderMethod(name string, m *Method) (javaMethodRender, error) {
 		lines := []string{
 			fmt.Sprintf("byte[] src = safeBytes(%s);", call),
 		}
-		if responseFields[0].Type == FieldTypeBytesFixed {
+		if fixedLen, ok := byteSequenceFixedLength(responseFields[0]); ok {
 			lines = append(lines,
-				fmt.Sprintf("if (src.length != %d) {", responseFields[0].FixedLength),
+				fmt.Sprintf("if (src.length != %d) {", fixedLen),
 				"    throw new StatusWordException(SW_WRONG_LENGTH);",
 				"}",
-				fmt.Sprintf("byte[] out = new byte[%d];", responseFields[0].FixedLength),
-				fmt.Sprintf("packBytes(out, 0, src, 0, %d);", responseFields[0].FixedLength),
+				fmt.Sprintf("byte[] out = new byte[%d];", fixedLen),
+				fmt.Sprintf("packBytes(out, 0, src, 0, %d);", fixedLen),
 				"return out;",
 			)
 		} else {
@@ -488,7 +488,7 @@ func buildRequestHandling(msg *Message) (requestHandling, error) {
 	rh.Comment = requestComment(fields)
 
 	hasData := false
-	bytesFieldIndex := -1
+	variableFieldIndex := -1
 	fixedDataLen := 0
 
 	for i, f := range fields {
@@ -511,11 +511,18 @@ func buildRequestHandling(msg *Message) (requestHandling, error) {
 					return requestHandling{}, fmt.Errorf("fixed bytes request field %q must have length > 0", f.Name)
 				}
 				fixedDataLen += f.FixedLength
-			case FieldTypeBytes:
-				if bytesFieldIndex != -1 {
-					return requestHandling{}, fmt.Errorf("multiple bytes request fields are unsupported")
+			case FieldTypeASCII, FieldTypeString, FieldTypeBytes:
+				if f.Type == FieldTypeString && f.Length != nil {
+					return requestHandling{}, fmt.Errorf("string request field %q does not support fixed length", f.Name)
 				}
-				bytesFieldIndex = i
+				if f.Length != nil {
+					fixedDataLen += *f.Length
+					break
+				}
+				if variableFieldIndex != -1 {
+					return requestHandling{}, fmt.Errorf("multiple variable-length request fields are unsupported")
+				}
+				variableFieldIndex = i
 			default:
 				return requestHandling{}, fmt.Errorf("unsupported request field type %q", f.Type)
 			}
@@ -524,10 +531,10 @@ func buildRequestHandling(msg *Message) (requestHandling, error) {
 		}
 	}
 
-	if bytesFieldIndex != -1 {
-		for i := bytesFieldIndex + 1; i < len(fields); i++ {
+	if variableFieldIndex != -1 {
+		for i := variableFieldIndex + 1; i < len(fields); i++ {
 			if fields[i].Location == ParameterLocationData || fields[i].Location == ParameterLocationNone {
-				return requestHandling{}, fmt.Errorf("bytes request field must be last among data fields")
+				return requestHandling{}, fmt.Errorf("variable-length request field must be last among data fields")
 			}
 		}
 	}
@@ -604,6 +611,29 @@ func buildRequestHandling(msg *Message) (requestHandling, error) {
 					fmt.Sprintf("byte[] %s = slice(requestData, %d, %d);", f.Name, dataOffset, f.FixedLength),
 				)
 				dataOffset += f.FixedLength
+			case FieldTypeASCII, FieldTypeString:
+				rh.ParamDecls = append(rh.ParamDecls, "byte[] "+f.Name)
+				rh.ArgExprs = append(rh.ArgExprs, f.Name)
+				if f.Type == FieldTypeString && f.Length != nil {
+					return requestHandling{}, fmt.Errorf("string request field %q does not support fixed length", f.Name)
+				}
+				if f.Length != nil {
+					rh.Lines = append(
+						rh.Lines,
+						fmt.Sprintf("byte[] %s = slice(requestData, %d, %d);", f.Name, dataOffset, *f.Length),
+					)
+					dataOffset += *f.Length
+					break
+				}
+				rh.Lines = append(
+					rh.Lines,
+					fmt.Sprintf(
+						"byte[] %s = slice(requestData, %d, requestData.length - %d);",
+						f.Name,
+						dataOffset,
+						dataOffset,
+					),
+				)
 			case FieldTypeBytes:
 				rh.ParamDecls = append(rh.ParamDecls, "byte[] "+f.Name)
 				rh.ArgExprs = append(rh.ArgExprs, f.Name)
@@ -778,7 +808,7 @@ func requestComment(fields []Field) string {
 		case ParameterLocationP2:
 			location = "P2"
 		case ParameterLocationData, ParameterLocationNone:
-			if f.Type == FieldTypeBytes || f.Type == FieldTypeBytesFixed {
+			if isByteSequenceField(f) {
 				location = "request data"
 			}
 		}
@@ -833,6 +863,22 @@ func responseFields(msg *Message) []Field {
 		return nil
 	}
 	return msg.Fields
+}
+
+func isByteSequenceField(f Field) bool {
+	return f.Type == FieldTypeASCII || f.Type == FieldTypeString || f.Type == FieldTypeBytes || f.Type == FieldTypeBytesFixed
+}
+
+func byteSequenceFixedLength(f Field) (int, bool) {
+	switch f.Type {
+	case FieldTypeBytesFixed:
+		return f.FixedLength, f.FixedLength > 0
+	case FieldTypeASCII, FieldTypeBytes:
+		if f.Length != nil && *f.Length > 0 {
+			return *f.Length, true
+		}
+	}
+	return 0, false
 }
 
 func toPascal(s string) string {
