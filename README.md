@@ -1,14 +1,15 @@
 # javacard-rpc
 
-RPC framework for Java Card applets. Define your applet's APDU interface in TOML, generate type-safe Swift clients and Java Card skeletons.
+RPC framework for Java Card applets. Define your applet's APDU interface in TOML, generate type-safe Swift and Kotlin clients plus Java Card skeletons.
 
 ## What it does
 
 ```
-counter.toml  ──►  jcrpc-gen  ──►  CounterClient.swift      (host-side)
+counter.toml  ──►  jcrpc-gen  ──►  CounterClient.swift      (Swift host-side)
+                               ──►  CounterClient.kt         (Kotlin host-side)
                                ──►  CounterSkeleton.java     (card-side)
                                ──►  CounterTransport.java    (transport interface)
-                               ──►  Package.swift / build.gradle
+                               ──►  Package.swift / build.gradle.kts
 ```
 
 You write your applet logic by extending the generated skeleton. The framework handles APDU encoding/decoding, field packing, and error mapping.
@@ -24,7 +25,7 @@ cp jcrpc-gen ~/.local/bin/    # or: make build-codegen
 jcrpc-gen --all --out-dir ./gen counter.toml
 
 # Or generate per language
-jcrpc-gen --swift CounterClient --java io.example.counter counter.toml
+jcrpc-gen --swift CounterClient --kotlin counter --java io.example.counter counter.toml
 ```
 
 ## IDL format
@@ -61,7 +62,7 @@ Generated code uses dependency injection — no framework imports in your applet
 
 ```
 ┌─────────────────────────┐     ┌──────────────────────────┐
-│  CounterClient (Swift)  │     │  CounterSkeleton (Java)  │
+│ CounterClient (host)    │     │  CounterSkeleton (Java)  │
 │  encode args → APDU     │────▶│  APDU → dispatch → handler│
 │  APDU response → types  │◀────│  handler result → APDU    │
 └─────────────────────────┘     └──────────────────────────┘
@@ -83,7 +84,7 @@ public class MyCounterApplet extends CounterSkeleton {
 }
 ```
 
-**Swift side** — use the generated client:
+**Host side** — use the generated client:
 
 ```swift
 let counter = CounterClient(transport: transport)
@@ -100,7 +101,8 @@ javacard-rpc/
 ├── examples/counter/     # Full working example
 │   ├── counter.toml      # IDL definition
 │   ├── applet/           # Java applet + jCardSim tests
-│   └── cli/              # Swift E2E test runner
+│   ├── cli/              # Swift E2E test runner
+│   └── kotlin-cli/       # Kotlin/JVM E2E test runner
 ├── references/           # IDL specification
 └── scripts/              # Setup/teardown
 ```
@@ -114,6 +116,7 @@ Generated code depends on thin runtime libraries:
 | Package | Description |
 |---------|-------------|
 | [javacard-rpc-client-swift](https://github.com/relux-works/javacard-rpc-client-swift) | Swift: `APDUCommand`, `APDUResponse`, `TCPTransport`, `DataPacker` |
+| [javacard-rpc-client-kotlin](https://github.com/relux-works/javacard-rpc-client-kotlin) | Kotlin/JVM: `APDUCommand`, `APDUResponse`, `TCPTransport`, `DataPacker` |
 | [javacard-rpc-server-javacard](https://github.com/relux-works/javacard-rpc-server-javacard) | Java Card: `AppletBase` with APDU dispatch + type helpers |
 
 ## Testing
@@ -122,7 +125,7 @@ Generated code depends on thin runtime libraries:
 # Codegen unit tests (48 tests)
 make test-codegen
 
-# Full E2E (build everything + run 11 integration tests)
+# Full E2E (build everything + run Swift + Kotlin integration harnesses)
 make e2e
 ```
 
@@ -135,6 +138,7 @@ make e2e
 | Build jCardSim bridge | `make build-bridge` |
 | Build example applet | `make build-applet` |
 | Build Swift E2E CLI | `make build-cli` |
+| Build Kotlin E2E CLI | `make build-kotlin-cli` |
 | Run codegen tests | `make test-codegen` |
 | Full E2E pipeline | `make e2e` |
 

@@ -27,7 +27,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 echo "[run-e2e] generating and building counter example..."
-make -C "$REPO_ROOT" generate build-bridge build-applet build-cli
+make -C "$REPO_ROOT" generate build-bridge build-applet build-cli build-kotlin-cli
 
 echo "[run-e2e] starting bridge..."
 JCRPC_SKIP_BUILD=1 "$SCRIPT_DIR/run-bridge.sh" >"$BRIDGE_LOG" 2>&1 &
@@ -54,3 +54,6 @@ fi
 
 echo "[run-e2e] running Swift E2E harness..."
 (cd "$SCRIPT_DIR/cli" && swift run)
+
+echo "[run-e2e] running Kotlin E2E harness..."
+(cd "$SCRIPT_DIR/kotlin-cli" && gradle run)

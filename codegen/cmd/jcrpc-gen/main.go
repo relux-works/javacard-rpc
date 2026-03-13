@@ -22,13 +22,14 @@ const (
 )
 
 type cliOptions struct {
-	outDir       string
-	javaPackage  string
-	swiftModule  string
-	all          bool
-	validateOnly bool
-	verbose      bool
-	help         bool
+	outDir        string
+	javaPackage   string
+	swiftModule   string
+	kotlinPackage string
+	all           bool
+	validateOnly  bool
+	verbose       bool
+	help          bool
 }
 
 func main() {
@@ -43,6 +44,7 @@ func run(args []string, stderr io.Writer) int {
 	fs.StringVar(&opts.outDir, "out-dir", ".", "")
 	fs.StringVar(&opts.javaPackage, "java", "", "")
 	fs.StringVar(&opts.swiftModule, "swift", "", "")
+	fs.StringVar(&opts.kotlinPackage, "kotlin", "", "")
 	fs.BoolVar(&opts.all, "all", false, "")
 	fs.BoolVar(&opts.validateOnly, "validate-only", false, "")
 	fs.BoolVar(&opts.verbose, "verbose", false, "")
@@ -102,6 +104,7 @@ func run(args []string, stderr io.Writer) int {
 
 	javaPackage := strings.TrimSpace(opts.javaPackage)
 	swiftModule := strings.TrimSpace(opts.swiftModule)
+	kotlinPackage := strings.TrimSpace(opts.kotlinPackage)
 	if opts.all {
 		if javaPackage == "" {
 			javaPackage = defaultJavaPackage(schema.Applet.Name)
@@ -109,18 +112,22 @@ func run(args []string, stderr io.Writer) int {
 		if swiftModule == "" {
 			swiftModule = defaultSwiftModule(schema.Applet.Name)
 		}
+		if kotlinPackage == "" {
+			kotlinPackage = codegen.DefaultKotlinPackage(schema.Applet.Name)
+		}
 	}
 
 	generateJava := javaPackage != ""
 	generateSwift := swiftModule != ""
-	if !generateJava && !generateSwift {
-		fmt.Fprintln(stderr, "error: no outputs selected (use --java, --swift, or --all)")
+	generateKotlin := kotlinPackage != ""
+	if !generateJava && !generateSwift && !generateKotlin {
+		fmt.Fprintln(stderr, "error: no outputs selected (use --java, --swift, --kotlin, or --all)")
 		return exitCodeGeneration
 	}
 
 	appletStem := appletFileStem(schema.Applet.Name)
 	appletLower := strings.ToLower(appletStem)
-	generated := make([]string, 0, 4)
+	generated := make([]string, 0, 8)
 
 	if generateJava {
 		verbosef("generating java package (package=%s)", javaPackage)
@@ -212,6 +219,47 @@ func run(args []string, stderr io.Writer) int {
 		generated = append(generated, swiftPath)
 	}
 
+	if generateKotlin {
+		verbosef("generating kotlin package (package=%s)", kotlinPackage)
+		kotlinSource, err := codegen.GenerateKotlinClient(schema, kotlinPackage)
+		if err != nil {
+			fmt.Fprintf(stderr, "generate kotlin client: %v\n", err)
+			return exitCodeGeneration
+		}
+
+		pkgDir := filepath.Join(opts.outDir, appletLower+"-client-kotlin")
+		pkgPath := strings.ReplaceAll(kotlinPackage, ".", string(filepath.Separator))
+		srcDir := filepath.Join(pkgDir, "src", "main", "kotlin", pkgPath)
+
+		if err := os.MkdirAll(srcDir, 0o755); err != nil {
+			fmt.Fprintf(stderr, "create kotlin package dir %q: %v\n", srcDir, err)
+			return exitCodeIO
+		}
+
+		settingsPath := filepath.Join(pkgDir, "settings.gradle.kts")
+		settingsContent := codegen.GenerateKotlinSettingsGradle(appletLower)
+		if err := os.WriteFile(settingsPath, []byte(settingsContent), 0o644); err != nil {
+			fmt.Fprintf(stderr, "write %s: %v\n", settingsPath, err)
+			return exitCodeIO
+		}
+		generated = append(generated, settingsPath)
+
+		buildGradlePath := filepath.Join(pkgDir, "build.gradle.kts")
+		buildGradleContent := codegen.GenerateKotlinBuildGradle(appletLower, kotlinPackage, schema.Applet.Version)
+		if err := os.WriteFile(buildGradlePath, []byte(buildGradleContent), 0o644); err != nil {
+			fmt.Fprintf(stderr, "write %s: %v\n", buildGradlePath, err)
+			return exitCodeIO
+		}
+		generated = append(generated, buildGradlePath)
+
+		kotlinPath := filepath.Join(srcDir, codegen.KotlinSourceFileName(schema.Applet.Name))
+		if err := os.WriteFile(kotlinPath, kotlinSource, 0o644); err != nil {
+			fmt.Fprintf(stderr, "write %s: %v\n", kotlinPath, err)
+			return exitCodeIO
+		}
+		generated = append(generated, kotlinPath)
+	}
+
 	if opts.verbose {
 		fmt.Fprintf(stderr, "generated %d file(s):\n", len(generated))
 		for _, path := range generated {
@@ -286,7 +334,8 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  --out-dir string      Output directory (default \".\")")
 	fmt.Fprintln(w, "  --java string         Generate Java skeleton with given package name")
 	fmt.Fprintln(w, "  --swift string        Generate Swift client with given module name")
-	fmt.Fprintln(w, "  --all                 Generate both Java and Swift (uses applet name for defaults)")
+	fmt.Fprintln(w, "  --kotlin string       Generate Kotlin client with given package name")
+	fmt.Fprintln(w, "  --all                 Generate Java, Swift, and Kotlin outputs (uses applet name for defaults)")
 	fmt.Fprintln(w, "  --validate-only       Parse + validate only, no generation")
 	fmt.Fprintln(w, "  --verbose             Print progress to stderr")
 	fmt.Fprintln(w, "  -h, --help            Show help")
