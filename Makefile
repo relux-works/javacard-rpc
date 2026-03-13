@@ -8,16 +8,18 @@
 #   test-applet     Run jCardSim-backed applet tests for the counter example
 #   run-bridge      Start the bridge with counter applet loaded
 #   run-example     Build and run the Swift E2E CLI
-#   e2e             Full one-shot pipeline: generate → build → bridge → run Swift E2E
+#   run-kotlin-example Build and run the Kotlin/JVM E2E CLI
+#   e2e             Full one-shot pipeline: generate → build → bridge → run Swift + Kotlin E2E
 #   clean           Remove build artifacts
 
 CODEGEN_DIR   := codegen
 CODEGEN_BIN   := $(CODEGEN_DIR)/jcrpc-gen
 EXAMPLE_DIR   := examples/counter
 CLI_DIR       := $(EXAMPLE_DIR)/cli
+KOTLIN_CLI_DIR := $(EXAMPLE_DIR)/kotlin-cli
 GEN_DIR       := $(EXAMPLE_DIR)/generated
 
-.PHONY: build-codegen generate build-bridge build-applet build-cli test-applet run-bridge run-example e2e clean
+.PHONY: build-codegen generate build-bridge build-applet build-cli build-kotlin-cli test-applet run-bridge run-example run-kotlin-example e2e clean
 
 # --- Build ---
 
@@ -37,6 +39,9 @@ build-applet:
 build-cli: generate
 	cd $(CLI_DIR) && swift build
 
+build-kotlin-cli: generate
+	cd $(KOTLIN_CLI_DIR) && gradle build
+
 test-applet:
 	cd $(EXAMPLE_DIR)/applet && ./gradlew test -q
 
@@ -47,6 +52,9 @@ run-bridge: build-bridge build-applet
 
 run-example: build-cli
 	cd $(CLI_DIR) && swift run
+
+run-kotlin-example: build-kotlin-cli
+	cd $(KOTLIN_CLI_DIR) && gradle run
 
 # --- E2E ---
 
@@ -66,5 +74,6 @@ clean:
 	rm -f $(CODEGEN_BIN)
 	rm -rf $(GEN_DIR)
 	cd $(CLI_DIR) && rm -rf .build
+	cd $(KOTLIN_CLI_DIR) && rm -rf build .gradle
 	cd bridge && ./gradlew clean -q 2>/dev/null || true
 	cd $(EXAMPLE_DIR)/applet && ./gradlew clean -q 2>/dev/null || true
