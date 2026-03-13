@@ -28,6 +28,21 @@ jcrpc-gen --all --out-dir ./gen counter.toml
 jcrpc-gen --swift CounterClient --kotlin counter --java io.example.counter counter.toml
 ```
 
+For the repo's canonical example, use:
+
+```bash
+make generate
+make e2e
+```
+
+That regenerates:
+
+- `examples/counter/generated/counter-client-swift`
+- `examples/counter/generated/counter-client-kotlin`
+- `examples/counter/generated/counter-server-javacard`
+
+And then runs one bridge with two host clients against the same applet.
+
 ## IDL format
 
 Applet interfaces are defined in TOML:
@@ -90,6 +105,8 @@ public class MyCounterApplet extends CounterSkeleton {
 let counter = CounterClient(transport: transport)
 let value = try await counter.increment(amount: 5)
 ```
+
+Kotlin/JVM follows the same DI pattern through generated `CounterTransport` plus the standalone runtime package `javacard-rpc-client-kotlin`.
 
 ## Project structure
 
