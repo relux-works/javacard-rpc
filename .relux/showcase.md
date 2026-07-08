@@ -1,7 +1,7 @@
 ---
 title: JavaCard RPC
 summary: An RPC framework for Java Card smart-card applets, IDL to typed clients.
-category: Architecture libraries
+category: Libraries
 featured: true
 ---
 
