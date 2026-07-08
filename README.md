@@ -73,7 +73,7 @@ See [IDL specification](references/idl-spec.md) for the full format.
 
 ## Architecture
 
-Generated code uses dependency injection — no framework imports in your applet logic:
+Generated code uses dependency injection; no framework imports in your applet logic:
 
 ```
 ┌─────────────────────────┐     ┌──────────────────────────┐
@@ -87,7 +87,7 @@ Generated code uses dependency injection — no framework imports in your applet
   (protocol/interface)           override onIncrement(), etc.
 ```
 
-**Java side** — extend the skeleton, implement your methods:
+**Java side**: extend the skeleton, implement your methods:
 
 ```java
 public class MyCounterApplet extends CounterSkeleton {
@@ -99,7 +99,7 @@ public class MyCounterApplet extends CounterSkeleton {
 }
 ```
 
-**Host side** — use the generated client:
+**Host side**: use the generated client:
 
 ```swift
 let counter = CounterClient(transport: transport)
