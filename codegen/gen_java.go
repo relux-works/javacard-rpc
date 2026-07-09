@@ -46,9 +46,6 @@ public abstract class {{.ClassName}} {
     protected final {{.TransportInterfaceName}} transport;
 
     protected {{.ClassName}}({{.TransportInterfaceName}} transport) {
-        if (transport == null) {
-            throw new IllegalArgumentException("transport is null");
-        }
         this.transport = transport;
     }
 
@@ -69,11 +66,15 @@ public abstract class {{.ClassName}} {
 {{.HandlersBlock}}    // --- Abstract methods — developer implements these ---
 
 {{.AbstractMethodsBlock}}
+    // No-message, numeric-only exception: java.lang.String is not safely
+    // convertible on real Java Card Classic runtimes (no StringBuilder,
+    // restricted String API), so this deliberately carries no message --
+    // callers should read getStatusWord() instead of getMessage().
     public static final class StatusWordException extends RuntimeException {
         private final short statusWord;
 
         public StatusWordException(short statusWord) {
-            super("Status word: 0x" + toHex(statusWord));
+            super();
             this.statusWord = statusWord;
         }
 
@@ -82,29 +83,23 @@ public abstract class {{.ClassName}} {
         }
     }
 
-    private static String toHex(short value) {
-        int unsigned = value & 0xFFFF;
-        String hex = Integer.toHexString(unsigned).toUpperCase();
-        if (hex.length() >= 4) {
-            return hex;
-        }
-        StringBuilder b = new StringBuilder(4);
-        for (int i = hex.length(); i < 4; i++) {
-            b.append('0');
-        }
-        b.append(hex);
-        return b.toString();
-    }
-
     private static byte[] safeBytes(byte[] data) {
         return data == null ? EMPTY : data;
     }
+
+    // Offsets/lengths below are declared int (this file is generated with
+    // ints="true" support in the CAP build), but every actual array index is
+    // explicitly narrowed to short at the point of use -- the JCVM only
+    // accepts short/byte operands for array load/store, even when general
+    // int arithmetic is otherwise allowed. This file intentionally has no
+    // javacard.framework import (stays usable as plain JVM code too), so
+    // array copies still go through System.arraycopy, not Util.arrayCopyNonAtomic.
 
     protected static int packU8(byte[] buf, int off, byte value) {
         if (off < 0 || off >= buf.length) {
             throw new StatusWordException(SW_WRONG_LENGTH);
         }
-        buf[off] = value;
+        buf[(short) off] = value;
         return off + 1;
     }
 
@@ -116,8 +111,8 @@ public abstract class {{.ClassName}} {
         if (off < 0 || off+1 >= buf.length) {
             throw new StatusWordException(SW_WRONG_LENGTH);
         }
-        buf[off] = (byte) ((value >>> 8) & 0xFF);
-        buf[off+1] = (byte) (value & 0xFF);
+        buf[(short) off] = (byte) ((value >>> 8) & 0xFF);
+        buf[(short) (off+1)] = (byte) (value & 0xFF);
         return off + 2;
     }
 
@@ -125,10 +120,10 @@ public abstract class {{.ClassName}} {
         if (off < 0 || off+3 >= buf.length) {
             throw new StatusWordException(SW_WRONG_LENGTH);
         }
-        buf[off] = (byte) ((value >>> 24) & 0xFF);
-        buf[off+1] = (byte) ((value >>> 16) & 0xFF);
-        buf[off+2] = (byte) ((value >>> 8) & 0xFF);
-        buf[off+3] = (byte) (value & 0xFF);
+        buf[(short) off] = (byte) ((value >>> 24) & 0xFF);
+        buf[(short) (off+1)] = (byte) ((value >>> 16) & 0xFF);
+        buf[(short) (off+2)] = (byte) ((value >>> 8) & 0xFF);
+        buf[(short) (off+3)] = (byte) (value & 0xFF);
         return off + 4;
     }
 
@@ -136,11 +131,21 @@ public abstract class {{.ClassName}} {
         if (srcLen < 0 || dstOff < 0 || srcOff < 0 || dstOff+srcLen > dst.length || srcOff+srcLen > src.length) {
             throw new StatusWordException(SW_WRONG_LENGTH);
         }
-        if (srcLen == 0) {
-            return dstOff;
-        }
-        System.arraycopy(src, srcOff, dst, dstOff, srcLen);
+        copyBytes(src, srcOff, dst, dstOff, srcLen);
         return dstOff + srcLen;
+    }
+
+    // Manual byte-by-byte copy loop -- neither java.lang.System.arraycopy nor
+    // javacard.framework.Util.arrayCopyNonAtomic is available here: System's
+    // arraycopy is not part of the real Java Card Classic java.lang.System
+    // stub (rejected by the converter: "method arraycopy(...) not found in
+    // export file lang.exp"), and Util would require a javacard.framework
+    // import, which this file deliberately never has (kept usable as plain
+    // JVM code too). A short-indexed loop works identically on both.
+    private static void copyBytes(byte[] src, int srcOff, byte[] dst, int dstOff, int len) {
+        for (int i = 0; i < len; i++) {
+            dst[(short) (dstOff + i)] = src[(short) (srcOff + i)];
+        }
     }
 
     private static boolean readBool(byte value) {
@@ -157,7 +162,7 @@ public abstract class {{.ClassName}} {
         if (off < 0 || off >= data.length) {
             throw new StatusWordException(SW_WRONG_LENGTH);
         }
-        return data[off];
+        return data[(short) off];
     }
 
     private static boolean readBool(byte[] data, int off) {
@@ -168,17 +173,17 @@ public abstract class {{.ClassName}} {
         if (off < 0 || off+1 >= data.length) {
             throw new StatusWordException(SW_WRONG_LENGTH);
         }
-        return (short) (((data[off] & 0xFF) << 8) | (data[off+1] & 0xFF));
+        return (short) (((data[(short) off] & 0xFF) << 8) | (data[(short) (off+1)] & 0xFF));
     }
 
     private static int readU32(byte[] data, int off) {
         if (off < 0 || off+3 >= data.length) {
             throw new StatusWordException(SW_WRONG_LENGTH);
         }
-        return ((data[off] & 0xFF) << 24)
-            | ((data[off+1] & 0xFF) << 16)
-            | ((data[off+2] & 0xFF) << 8)
-            | (data[off+3] & 0xFF);
+        return ((data[(short) off] & 0xFF) << 24)
+            | ((data[(short) (off+1)] & 0xFF) << 16)
+            | ((data[(short) (off+2)] & 0xFF) << 8)
+            | (data[(short) (off+3)] & 0xFF);
     }
 
     private static byte[] slice(byte[] data, int off, int len) {
@@ -188,8 +193,8 @@ public abstract class {{.ClassName}} {
         if (len == 0) {
             return EMPTY;
         }
-        byte[] out = new byte[len];
-        System.arraycopy(data, off, out, 0, len);
+        byte[] out = new byte[(short) len];
+        copyBytes(data, off, out, 0, len);
         return out;
     }
 }
@@ -455,7 +460,7 @@ func renderMethod(name string, m *Method) (javaMethodRender, error) {
 			)
 		} else {
 			lines = append(lines,
-				"byte[] out = new byte[src.length];",
+				"byte[] out = new byte[(short) src.length];",
 				"packBytes(out, 0, src, 0, src.length);",
 				"return out;",
 			)
