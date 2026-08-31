@@ -40,10 +40,12 @@ type rawMessage struct {
 }
 
 type rawField struct {
-	Name     string `toml:"name" json:"name"`
-	Type     string `toml:"type" json:"type"`
-	Length   *int   `toml:"length" json:"length"`
-	Location string `toml:"location" json:"location"`
+	Name      string `toml:"name" json:"name"`
+	Type      string `toml:"type" json:"type"`
+	Length    *int   `toml:"length" json:"length"`
+	MaxLength *int   `toml:"max_length" json:"max_length"`
+	ChunkSize *int   `toml:"chunk_size" json:"chunk_size"`
+	Location  string `toml:"location" json:"location"`
 }
 
 type rawStatusWord struct {
@@ -168,6 +170,9 @@ func normalizeMessage(methodName, section string, raw rawMessage, isRequest bool
 		if rf.Length != nil && *rf.Length <= 0 {
 			return nil, fmt.Errorf("%s.length: must be > 0", path)
 		}
+		if ft != FieldTypeStream && (rf.MaxLength != nil || rf.ChunkSize != nil) {
+			return nil, fmt.Errorf("%s: max_length and chunk_size are only supported for stream fields", path)
+		}
 
 		f := Field{
 			Name:        rf.Name,
@@ -175,6 +180,12 @@ func normalizeMessage(methodName, section string, raw rawMessage, isRequest bool
 			Length:      cloneIntPtr(rf.Length),
 			FixedLength: fixedLen,
 			Location:    ParameterLocationNone,
+		}
+		if rf.MaxLength != nil {
+			f.MaxLength = *rf.MaxLength
+		}
+		if rf.ChunkSize != nil {
+			f.ChunkSize = *rf.ChunkSize
 		}
 		if rf.Location != "" {
 			loc, err := parseLocation(rf.Location)
@@ -258,7 +269,7 @@ func assignRequestLocations(fields []Field) error {
 func parseFieldType(t string) (FieldType, int, error) {
 	trimmed := strings.TrimSpace(t)
 	switch FieldType(trimmed) {
-	case FieldTypeU8, FieldTypeU16, FieldTypeU32, FieldTypeBool, FieldTypeASCII, FieldTypeString, FieldTypeBytes:
+	case FieldTypeU8, FieldTypeU16, FieldTypeU32, FieldTypeBool, FieldTypeASCII, FieldTypeString, FieldTypeBytes, FieldTypeStream:
 		return FieldType(trimmed), 0, nil
 	}
 

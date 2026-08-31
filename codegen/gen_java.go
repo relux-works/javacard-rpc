@@ -41,12 +41,13 @@ public abstract class {{.ClassName}} {
 
     private static final short SW_WRONG_LENGTH = (short) 0x6700;
     private static final short SW_INS_NOT_SUPPORTED = (short) 0x6D00;
-    private static final byte[] EMPTY = new byte[0];
+    private final byte[] empty;
 
     protected final {{.TransportInterfaceName}} transport;
 
     protected {{.ClassName}}({{.TransportInterfaceName}} transport) {
         this.transport = transport;
+        this.empty = new byte[0];
     }
 
     public final byte[] dispatch(byte ins, byte p1, byte p2, byte[] data) {
@@ -83,8 +84,8 @@ public abstract class {{.ClassName}} {
         }
     }
 
-    private static byte[] safeBytes(byte[] data) {
-        return data == null ? EMPTY : data;
+    private byte[] safeBytes(byte[] data) {
+        return data == null ? empty : data;
     }
 
     // Offsets/lengths below are declared int (this file is generated with
@@ -186,12 +187,12 @@ public abstract class {{.ClassName}} {
             | (data[(short) (off+3)] & 0xFF);
     }
 
-    private static byte[] slice(byte[] data, int off, int len) {
+    private byte[] slice(byte[] data, int off, int len) {
         if (off < 0 || len < 0 || off+len > data.length) {
             throw new StatusWordException(SW_WRONG_LENGTH);
         }
         if (len == 0) {
-            return EMPTY;
+            return empty;
         }
         byte[] out = new byte[(short) len];
         copyBytes(data, off, out, 0, len);
@@ -223,6 +224,9 @@ type javaTemplateData struct {
 	DispatchCasesBlock     string
 	HandlersBlock          string
 	AbstractMethodsBlock   string
+	StreamEndpointName     string
+	StreamRuntimeName      string
+	StreamAPDUAdapterName  string
 }
 
 type javaMethodRender struct {
@@ -237,6 +241,9 @@ type javaMethodRender struct {
 	AbstractReturn string
 	AbstractParams []string
 	ResponseKind   responseKind
+	IsStream       bool
+	RequestStream  *Field
+	ResponseStream *Field
 }
 
 type requestHandling struct {
@@ -248,10 +255,16 @@ type requestHandling struct {
 
 // JavaGenerationResult holds the generated Java source files.
 type JavaGenerationResult struct {
-	TransportSource []byte // CounterTransport.java
-	SkeletonSource  []byte // CounterSkeleton.java
-	TransportName   string // e.g. "CounterTransport"
-	SkeletonName    string // e.g. "CounterSkeleton"
+	TransportSource         []byte // CounterTransport.java
+	SkeletonSource          []byte // CounterSkeleton.java
+	StreamEndpointSource    []byte // CounterStreamEndpoint.java, streamed schemas only
+	StreamRuntimeSource     []byte // CounterBoundedStreamRuntime.java, streamed schemas only
+	StreamAPDUAdapterSource []byte // CounterStreamAPDUAdapter.java, streamed schemas only
+	TransportName           string // e.g. "CounterTransport"
+	SkeletonName            string // e.g. "CounterSkeleton"
+	StreamEndpointName      string // e.g. "CounterStreamEndpoint"
+	StreamRuntimeName       string // e.g. "CounterBoundedStreamRuntime"
+	StreamAPDUAdapterName   string // e.g. "CounterStreamAPDUAdapter"
 }
 
 // GenerateJavaSkeleton renders a Java Card abstract applet skeleton from a validated schema.
@@ -282,6 +295,9 @@ func GenerateJavaSkeleton(s *Schema, packageName string) (*JavaGenerationResult,
 		DispatchCasesBlock:     buildDispatchCasesBlock(methods),
 		HandlersBlock:          buildHandlersBlock(methods),
 		AbstractMethodsBlock:   buildAbstractMethodsBlock(methods),
+		StreamEndpointName:     toPascal(s.Applet.Name) + "StreamEndpoint",
+		StreamRuntimeName:      toPascal(s.Applet.Name) + "BoundedStreamRuntime",
+		StreamAPDUAdapterName:  toPascal(s.Applet.Name) + "StreamAPDUAdapter",
 	}
 
 	// Render transport interface
@@ -304,11 +320,30 @@ func GenerateJavaSkeleton(s *Schema, packageName string) (*JavaGenerationResult,
 		return nil, fmt.Errorf("render java skeleton: %w", err)
 	}
 
+	streamEndpointSource, streamRuntimeSource, streamAPDUAdapterSource, err := generateJavaStreamSupport(&data, methods)
+	if err != nil {
+		return nil, err
+	}
+	if len(streamEndpointSource) > 0 {
+		augmented, augmentErr := augmentJavaSkeletonForStreams(skeletonOut.String(), &data, methods)
+		if augmentErr != nil {
+			return nil, augmentErr
+		}
+		skeletonOut.Reset()
+		skeletonOut.WriteString(augmented)
+	}
+
 	return &JavaGenerationResult{
-		TransportSource: transportOut.Bytes(),
-		SkeletonSource:  skeletonOut.Bytes(),
-		TransportName:   data.TransportInterfaceName,
-		SkeletonName:    data.ClassName,
+		TransportSource:         transportOut.Bytes(),
+		SkeletonSource:          skeletonOut.Bytes(),
+		StreamEndpointSource:    streamEndpointSource,
+		StreamRuntimeSource:     streamRuntimeSource,
+		StreamAPDUAdapterSource: streamAPDUAdapterSource,
+		TransportName:           data.TransportInterfaceName,
+		SkeletonName:            data.ClassName,
+		StreamEndpointName:      data.StreamEndpointName,
+		StreamRuntimeName:       data.StreamRuntimeName,
+		StreamAPDUAdapterName:   data.StreamAPDUAdapterName,
 	}, nil
 }
 
@@ -350,11 +385,6 @@ func renderMethods(s *Schema) ([]javaMethodRender, error) {
 }
 
 func renderMethod(name string, m *Method) (javaMethodRender, error) {
-	request, err := buildRequestHandling(m.Request)
-	if err != nil {
-		return javaMethodRender{}, err
-	}
-
 	mr := javaMethodRender{
 		Name:         name,
 		INS:          m.INS,
@@ -362,6 +392,17 @@ func renderMethod(name string, m *Method) (javaMethodRender, error) {
 		HandlerName:  "handle" + toPascal(name),
 		AbstractName: "on" + toPascal(name),
 		Signature:    methodSignature(name, m),
+	}
+	if m.HasStream() {
+		mr.IsStream = true
+		mr.RequestStream = m.Request.StreamField()
+		mr.ResponseStream = m.Response.StreamField()
+		return mr, nil
+	}
+
+	request, err := buildRequestHandling(m.Request)
+	if err != nil {
+		return javaMethodRender{}, err
 	}
 
 	responseFields := responseFields(m.Response)
@@ -378,7 +419,7 @@ func renderMethod(name string, m *Method) (javaMethodRender, error) {
 		mr.HandlerLines = appendHandlerBody(
 			request,
 			fmt.Sprintf("%s(%s);", mr.AbstractName, strings.Join(request.ArgExprs, ", ")),
-			"return EMPTY;",
+			"return empty;",
 		)
 		return mr, nil
 	case len(responseFields) == 1 && responseFields[0].Type == FieldTypeU8:
@@ -675,23 +716,53 @@ func appendHandlerBody(request requestHandling, lines ...string) []string {
 func buildMethodCommentBlock(methods []javaMethodRender) string {
 	var b strings.Builder
 	for _, method := range methods {
-		fmt.Fprintf(&b, " *   INS 0x%02X — %s\n", method.INS, method.Signature)
+		if method.IsStream {
+			fmt.Fprintf(&b, " *   INS 0x%02X..0x%02X — %s\n", method.INS, method.INS+5, method.Signature)
+		} else {
+			fmt.Fprintf(&b, " *   INS 0x%02X — %s\n", method.INS, method.Signature)
+		}
 	}
 	return b.String()
 }
 
 func buildINSConstantsBlock(methods []javaMethodRender) string {
-	maxLen := 0
+	type insEntry struct {
+		name string
+		ins  byte
+	}
+	entries := make([]insEntry, 0, len(methods))
+	streamSuffixes := []string{
+		"WRITE_OR_INVOKE",
+		"CLOSE_WRITE",
+		"GET_PENDING_READ_INFO",
+		"READ_CHUNK",
+		"CLOSE_READ",
+		"ABORT",
+	}
 	for _, method := range methods {
-		if len(method.INSConstName) > maxLen {
-			maxLen = len(method.INSConstName)
+		if !method.IsStream {
+			entries = append(entries, insEntry{name: method.INSConstName, ins: method.INS})
+			continue
+		}
+		for offset, suffix := range streamSuffixes {
+			entries = append(entries, insEntry{
+				name: method.INSConstName + "_" + suffix,
+				ins:  method.INS + byte(offset),
+			})
+		}
+	}
+
+	maxLen := 0
+	for _, entry := range entries {
+		if len(entry.name) > maxLen {
+			maxLen = len(entry.name)
 		}
 	}
 
 	var b strings.Builder
-	for _, method := range methods {
-		padding := strings.Repeat(" ", maxLen-len(method.INSConstName)+2)
-		fmt.Fprintf(&b, "    private static final byte %s%s= (byte) 0x%02X;\n", method.INSConstName, padding, method.INS)
+	for _, entry := range entries {
+		padding := strings.Repeat(" ", maxLen-len(entry.name)+2)
+		fmt.Fprintf(&b, "    private static final byte %s%s= (byte) 0x%02X;\n", entry.name, padding, entry.ins)
 	}
 	if b.Len() > 0 {
 		trimmed := strings.TrimSuffix(b.String(), "\n")
@@ -742,12 +813,15 @@ func buildStatusConstantsBlock(statusWords map[string]StatusWord) string {
 func buildDispatchCasesBlock(methods []javaMethodRender) string {
 	var b strings.Builder
 	for _, method := range methods {
+		if method.IsStream {
+			continue
+		}
 		fmt.Fprintf(&b, "            case %s:\n", method.INSConstName)
 		if method.HasHandler {
 			fmt.Fprintf(&b, "                return %s(p1, p2, requestData);\n", method.HandlerName)
 		} else {
 			fmt.Fprintf(&b, "                %s();\n", method.AbstractName)
-			b.WriteString("                return EMPTY;\n")
+			b.WriteString("                return empty;\n")
 		}
 	}
 	return b.String()
@@ -756,7 +830,7 @@ func buildDispatchCasesBlock(methods []javaMethodRender) string {
 func buildHandlersBlock(methods []javaMethodRender) string {
 	var b strings.Builder
 	for _, method := range methods {
-		if !method.HasHandler {
+		if method.IsStream || !method.HasHandler {
 			continue
 		}
 		fmt.Fprintf(&b, "    private byte[] %s(byte p1, byte p2, byte[] requestData) {\n", method.HandlerName)
@@ -770,7 +844,17 @@ func buildHandlersBlock(methods []javaMethodRender) string {
 
 func buildAbstractMethodsBlock(methods []javaMethodRender) string {
 	var b strings.Builder
-	for i, method := range methods {
+	nonStreamCount := 0
+	for _, method := range methods {
+		if !method.IsStream {
+			nonStreamCount++
+		}
+	}
+	written := 0
+	for _, method := range methods {
+		if method.IsStream {
+			continue
+		}
 		switch method.ResponseKind {
 		case responseKindPacked:
 			fmt.Fprintf(&b, "    /**\n")
@@ -792,7 +876,8 @@ func buildAbstractMethodsBlock(methods []javaMethodRender) string {
 			method.AbstractName,
 			strings.Join(method.AbstractParams, ", "),
 		)
-		if i != len(methods)-1 {
+		written++
+		if written != nonStreamCount {
 			b.WriteString("\n")
 		}
 	}

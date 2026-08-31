@@ -43,12 +43,13 @@ public abstract class CounterSkeleton {
 
     private static final short SW_WRONG_LENGTH = (short) 0x6700;
     private static final short SW_INS_NOT_SUPPORTED = (short) 0x6D00;
-    private static final byte[] EMPTY = new byte[0];
+    private final byte[] empty;
 
     protected final CounterTransport transport;
 
     protected CounterSkeleton(CounterTransport transport) {
         this.transport = transport;
+        this.empty = new byte[0];
     }
 
     public final byte[] dispatch(byte ins, byte p1, byte p2, byte[] data) {
@@ -62,7 +63,7 @@ public abstract class CounterSkeleton {
                 return handleGet(p1, p2, requestData);
             case INS_RESET:
                 onReset();
-                return EMPTY;
+                return empty;
             case INS_SET_LIMIT:
                 return handleSetLimit(p1, p2, requestData);
             case INS_GET_INFO:
@@ -120,7 +121,7 @@ public abstract class CounterSkeleton {
         }
         short limit = readU16(requestData, 0);
         onSetLimit(limit);
-        return EMPTY;
+        return empty;
     }
 
     private byte[] handleGetInfo(byte p1, byte p2, byte[] requestData) {
@@ -132,7 +133,7 @@ public abstract class CounterSkeleton {
         // request: data(bytes) in request data
         byte[] data = slice(requestData, 0, requestData.length - 0);
         onStore(data);
-        return EMPTY;
+        return empty;
     }
 
     private byte[] handleLoad(byte p1, byte p2, byte[] requestData) {
@@ -149,14 +150,14 @@ public abstract class CounterSkeleton {
         }
         int value = readU32(requestData, 0);
         onSetCount(value);
-        return EMPTY;
+        return empty;
     }
 
     private byte[] handleSetEnabled(byte p1, byte p2, byte[] requestData) {
         // request: enabled(bool) in P1
         boolean enabled = readBool(p1);
         onSetEnabled(enabled);
-        return EMPTY;
+        return empty;
     }
 
     private byte[] handleGetHash(byte p1, byte p2, byte[] requestData) {
@@ -230,8 +231,8 @@ public abstract class CounterSkeleton {
         }
     }
 
-    private static byte[] safeBytes(byte[] data) {
-        return data == null ? EMPTY : data;
+    private byte[] safeBytes(byte[] data) {
+        return data == null ? empty : data;
     }
 
     // Offsets/lengths below are declared int (this file is generated with
@@ -333,12 +334,12 @@ public abstract class CounterSkeleton {
             | (data[(short) (off+3)] & 0xFF);
     }
 
-    private static byte[] slice(byte[] data, int off, int len) {
+    private byte[] slice(byte[] data, int off, int len) {
         if (off < 0 || len < 0 || off+len > data.length) {
             throw new StatusWordException(SW_WRONG_LENGTH);
         }
         if (len == 0) {
-            return EMPTY;
+            return empty;
         }
         byte[] out = new byte[(short) len];
         copyBytes(data, off, out, 0, len);

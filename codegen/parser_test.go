@@ -291,6 +291,70 @@ fields = [{ name = "message", type = "string" }]
 	}
 }
 
+func TestParseBidirectionalStreamFields(t *testing.T) {
+	input := `
+[applet]
+name = "Demo"
+version = "1.0.0"
+aid = "A000000001"
+cla = 0x80
+
+[methods.process]
+ins = 0x20
+[methods.process.request]
+fields = [{ name = "requestPacket", type = "stream", max_length = 1792, chunk_size = 192 }]
+[methods.process.response]
+fields = [{ name = "resultPacket", type = "stream", max_length = 1792, chunk_size = 192 }]
+`
+
+	s, err := Parse(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+
+	method := s.Methods["process"]
+	request := method.Request.StreamField()
+	response := method.Response.StreamField()
+	if request == nil || response == nil {
+		t.Fatalf("expected request and response stream fields, got request=%#v response=%#v", request, response)
+	}
+	if request.Name != "requestPacket" || request.MaxLength != 1792 || request.ChunkSize != 192 {
+		t.Fatalf("unexpected request stream: %#v", request)
+	}
+	if request.Location != ParameterLocationData {
+		t.Fatalf("request stream location mismatch: got %q want %q", request.Location, ParameterLocationData)
+	}
+	if response.Name != "resultPacket" || response.MaxLength != 1792 || response.ChunkSize != 192 {
+		t.Fatalf("unexpected response stream: %#v", response)
+	}
+	if !method.HasStream() {
+		t.Fatal("method should reserve the stream lifecycle")
+	}
+}
+
+func TestParseRejectsStreamBoundsOnOrdinaryField(t *testing.T) {
+	input := `
+[applet]
+name = "Demo"
+version = "1.0.0"
+aid = "A000000001"
+cla = 0x80
+
+[methods.echo]
+ins = 0x01
+[methods.echo.request]
+fields = [{ name = "payload", type = "bytes", max_length = 1024, chunk_size = 192 }]
+`
+
+	_, err := Parse(strings.NewReader(input))
+	if err == nil {
+		t.Fatal("expected Parse to reject stream bounds on bytes")
+	}
+	if !strings.Contains(err.Error(), "only supported for stream fields") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestParseRejectsStringLength(t *testing.T) {
 	input := `
 [applet]

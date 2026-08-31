@@ -51,7 +51,7 @@ Method fields:
 
 | Key | Type | Required | Rules |
 |---|---|---|---|
-| `ins` | integer | yes | Byte range `0x00..0xFF`; unique across methods; reserved ranges forbidden. |
+| `ins` | integer | yes | Byte range `0x00..0xFF`; unique across methods; reserved ranges forbidden. A streamed method reserves this value plus the next five values. |
 | `description` | string | no | Free text. |
 | `[methods.<name>.request]` | table | no | Request message definition. |
 | `[methods.<name>.response]` | table | no | Response message definition. |
@@ -64,7 +64,9 @@ Message shape:
 
 `INS` constraints:
 
-- Must be unique across all methods.
+- A non-streamed method reserves exactly its declared value.
+- A streamed method reserves `ins..ins+5`; the complete range must fit in one
+  byte, avoid ISO-reserved ranges and not overlap any other method range.
 - Reserved ranges (invalid): `0x60..0x6F`, `0x90..0x9F`.
 
 ## 4. Field Types (Full Set)
@@ -79,6 +81,7 @@ Message shape:
 | `string` | variable | Variable-length UTF-8 string encoded in response/request data. |
 | `bytes` | variable | Variable-length byte array. |
 | `bytes[N]` | `N` bytes | Fixed-length byte array (`N > 0`). |
+| `stream` | bounded, multi-APDU | One request or response value transferred through the generated half-duplex stream lifecycle. |
 
 ## 5. Field Definition
 
@@ -87,9 +90,11 @@ Each field object in `fields = [...]` uses:
 | Key | Type | Required | Rules |
 |---|---|---|---|
 | `name` | string | yes | Must match identifier regex: `^[A-Za-z][A-Za-z0-9_]*$`. |
-| `type` | string | yes | One of `u8`, `u16`, `u32`, `bool`, `ascii`, `string`, `bytes`, `bytes[N]`. |
+| `type` | string | yes | One of `u8`, `u16`, `u32`, `bool`, `ascii`, `string`, `bytes`, `bytes[N]`, `stream`. |
 | `location` | string | no | `p1`, `p2`, or `data` (case-insensitive). |
 | `length` | integer | no | Only valid when `type = "bytes"` or `type = "ascii"`; must be `> 0`. |
+| `max_length` | integer | for `stream` | Maximum complete value size, `1..32767` for Java Card array addressing, and no more than `chunk_size * 255`. |
+| `chunk_size` | integer | for `stream` | Maximum chunk data size, `1..255`. |
 
 Notes:
 
@@ -98,6 +103,104 @@ Notes:
 - `string` is always dynamic-length UTF-8 and does not support `length`.
 - `length` is invalid for non-`bytes` and non-`ascii` types.
 - For `bytes[N]`, `N` must be greater than zero.
+- `stream` does not use `length`. It requires both `max_length` and
+  `chunk_size`, cannot use `p1` or `p2`, and must be the only field in its
+  request or response message. A method may declare at most one request stream
+  and at most one response stream.
+- `P1` and `P2` are reserved for the stream lifecycle for the whole method. A
+  response-only stream therefore carries ordinary request fields in APDU data,
+  not in `P1` or `P2`.
+
+### 5.1 Stream example
+
+```toml
+[methods.processPacket]
+ins = 0x20
+description = "Process one bounded packet and return one bounded result"
+
+[methods.processPacket.request]
+fields = [
+  { name = "requestPacket", type = "stream", max_length = 1792, chunk_size = 192 }
+]
+
+[methods.processPacket.response]
+fields = [
+  { name = "resultPacket", type = "stream", max_length = 1792, chunk_size = 192 }
+]
+```
+
+This method owns `INS 0x20..0x25`. `P1` and `P2` are unsigned packet index and
+packet count for chunk commands. Packet zero implicitly opens the stream; there
+is no wire stream identifier. Code generation assigns each streamed method an
+internal method identifier and routes every streamed method through one
+applet-level session manager. A selected applet can therefore own only one
+active stream lifecycle at a time. An operation for another streamed method is
+rejected without destroying the current owner's recoverable state.
+
+| Offset | Command | Command data | Response data |
+| ---: | --- | --- | --- |
+| `+0` | write request chunk, or invoke a response-only stream method | chunk, or ordinary bounded request | empty, or 35-byte result descriptor |
+| `+1` | close request stream | `totalLength:u16be || sha256:bytes[32]` | ordinary short result or 35-byte result descriptor |
+| `+2` | get pending result info | empty | 35-byte result descriptor |
+| `+3` | read result chunk | empty | chunk |
+| `+4` | close result stream | `totalLength:u16be || sha256:bytes[32]` | empty |
+| `+5` | abort | empty | empty |
+
+The descriptor is
+`packetCount:u8 || totalLength:u16be || sha256:bytes[32]`. Input packets must be
+sequential and repeat the same count. Repeating the immediately preceding
+packet with identical bytes is idempotent. Every packet except the final one is
+exactly `chunk_size` bytes; the final packet is non-empty and no larger than
+`chunk_size`. A gap, conflicting replay, changed count, invalid chunk layout,
+wrong direction or digest/length mismatch fails closed. The first valid
+write close executes the typed handler once. For an ordinary short result, an
+identical write-close retry returns the retained result without executing the
+handler again. For a streamed result, the client recovers a lost write-close
+response through `+2`. Response transfer is client-pulled. An identical read
+close retry succeeds from a descriptor-only receipt after result bytes have
+already been wiped.
+
+The generated Kotlin client uploads request chunks, closes the request with its
+length and digest, pulls the described response chunks, verifies the complete
+response digest and closes the response. It retries a write chunk, pending-info
+read, result chunk, or close once with identical command bytes after a transport
+failure; all of those operations are idempotent in the corresponding state. It
+does not retry a response-only invocation or a write close that produces a
+streamed result. If either response is lost, the client recovers the already
+prepared descriptor through `+2`, so the typed handler is not executed again.
+A repeated response-only `+0` while that descriptor remains pending fails with
+the wrong-state status and does not clear or replace the pending result.
+Any remaining host failure triggers a best-effort `+5` abort. The generated
+client then synchronously calls `transport.invalidateStreamSession()` so the
+transport can close its logical channel or otherwise require a fresh select.
+This invalidation still runs when coroutine cancellation prevents the suspend
+abort from reaching the card. Cleanup is best effort: an abort or invalidation
+failure cannot replace the original protocol failure or cancellation.
+Coroutine cancellation is propagated rather than
+retried. One generated atomic owner guard covers the complete typed operation.
+A concurrent streamed call fails locally with `StreamBusy` and does not send an
+abort or any other APDU that could disturb the active operation.
+
+The Java output owns the session lifecycle inside generated code. The generated
+skeleton constructs one runtime, one maximum-sized transient workspace, digest
+scratch, a reset marker, SHA-256, and reusable status exceptions. The generated
+APDU adapter reads all incoming short-APDU fragments, invokes the generated
+dispatcher, and sends the result from preallocated transient storage. The
+developer implements only typed `(buffer, offset, length, output, capacity)`
+handlers and calls the generated `failStream(statusWord)` helper for a business
+failure; the developer does not implement a session state machine.
+
+The concrete `Applet` owns only lifecycle wiring: it constructs one generated
+APDU adapter, calls `processIfStream(apdu)` before ordinary dispatch, and
+forwards `deselect()` to the adapter. The generated skeleton and adapter remain
+the sole owners of stream session state.
+
+The command path does not allocate an object or array. Reset, applet deselect,
+explicit abort and every terminal validation failure wipe the active workspace.
+The transient reset marker also prevents persistent scalar metadata from being
+mistaken for a live session after card reset or deselect. Cryptographic purpose
+and authorization remain properties of the typed method implementation; a
+stream field does not authorize generic signing or decryption.
 
 ## 6. Parameter Location Inference Rules
 
@@ -124,6 +227,18 @@ If no field has explicit `location`:
 
 - `p1` and `p2` locations are only valid for `u8` or `bool`.
 - `u16`, `u32`, `ascii`, `string`, `bytes`, `bytes[N]` must be carried in data.
+- A method containing a request or response `stream` cannot use `p1` or `p2`
+  for ordinary request fields because the lifecycle owns both bytes.
+
+### 6.4 Wire encoding model
+
+javacard-rpc does not embed Protocol Buffers or another general-purpose object
+serializer. Generated code reads and writes declared fields directly in IDL
+order: unsigned integers are big-endian, booleans use one byte, fixed byte
+arrays keep their declared size, and the final variable-length field consumes
+the remaining APDU data. A `stream` carries one bounded opaque byte array over
+several APDUs; serialization inside that byte array belongs to the application
+contract, not to the stream transport.
 
 ## 7. `[status_words]` Section (Optional)
 
@@ -156,18 +271,19 @@ The following semantic checks are enforced:
 4. `applet.cla` must be byte-sized and not `0x00`.
 5. At least one method must be declared.
 6. Method names must be valid identifiers.
-7. `ins` values must be byte-sized, unique, and not in reserved ranges `0x60..0x6F` / `0x90..0x9F`.
+7. A normal `ins` value, or every value in a streamed method's derived six-INS range, must be byte-sized, collision-free, and outside reserved ranges `0x60..0x6F` / `0x90..0x9F`.
 8. Field names must be valid identifiers.
-9. Field type must be one of `u8`, `u16`, `u32`, `bool`, `ascii`, `string`, `bytes`, `bytes[N]`.
+9. Field type must be one of `u8`, `u16`, `u32`, `bool`, `ascii`, `string`, `bytes`, `bytes[N]`, `stream`.
 10. `length` is allowed only for `bytes` and `ascii`, and must be `> 0`.
 11. For `bytes[N]`, `N` must be `> 0`.
 12. `location` must be one of `p1`, `p2`, `data` when present.
 13. `p1`/`p2` fields must be `u8` or `bool`.
 14. Duplicate `p1` or duplicate `p2` fields are invalid.
-15. Status word names must be valid identifiers.
-16. Status word codes must be unique.
-17. Status word code must be in `0x6000..0x6FFF` or `0x9000..0x9FFF`.
-18. Unknown TOML keys are rejected during parse.
+15. A stream field requires `max_length` and `chunk_size`, must fit in at most 255 chunks, cannot occupy `p1`/`p2`, and must be the only field in that message; the containing method cannot assign ordinary request fields to `p1`/`p2` either.
+16. Status word names must be valid identifiers.
+17. Status word codes must be unique.
+18. Status word code must be in `0x6000..0x6FFF` or `0x9000..0x9FFF`.
+19. Unknown TOML keys are rejected during parse.
 
 ## 9. Complete Annotated `counter.toml` Example
 

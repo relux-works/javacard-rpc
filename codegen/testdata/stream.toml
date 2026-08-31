@@ -1,0 +1,29 @@
+[applet]
+name = "StreamDemo"
+description = "Bounded bidirectional stream fixture"
+version = "1.0.0"
+aid = "F000000102"
+cla = 0xB0
+
+[methods.getVersion]
+ins = 0x01
+[methods.getVersion.response]
+fields = [{ name = "version", type = "u8" }]
+
+[methods.processPacket]
+ins = 0x20
+[methods.processPacket.request]
+fields = [
+  { name = "requestPacket", type = "stream", max_length = 1792, chunk_size = 192 }
+]
+[methods.processPacket.response]
+fields = [
+  { name = "resultPacket", type = "stream", max_length = 1792, chunk_size = 192 }
+]
+
+[methods.issueReport]
+ins = 0x30
+[methods.issueReport.response]
+fields = [
+  { name = "report", type = "stream", max_length = 64, chunk_size = 32 }
+]

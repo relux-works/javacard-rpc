@@ -42,6 +42,7 @@ const (
 	FieldTypeString     FieldType = "string"
 	FieldTypeBytes      FieldType = "bytes"
 	FieldTypeBytesFixed FieldType = "bytes_fixed"
+	FieldTypeStream     FieldType = "stream"
 )
 
 // ParameterLocation indicates where a request field is carried in an APDU.
@@ -60,7 +61,28 @@ type Field struct {
 	Type        FieldType
 	Length      *int
 	FixedLength int
+	MaxLength   int
+	ChunkSize   int
 	Location    ParameterLocation
+}
+
+// StreamField returns the single bounded stream field in this message, if any.
+func (m *Message) StreamField() *Field {
+	if m == nil {
+		return nil
+	}
+	for i := range m.Fields {
+		if m.Fields[i].Type == FieldTypeStream {
+			return &m.Fields[i]
+		}
+	}
+	return nil
+}
+
+// HasStream reports whether the method reserves the six-instruction stream
+// lifecycle starting at its declared INS.
+func (m *Method) HasStream() bool {
+	return m != nil && (m.Request.StreamField() != nil || m.Response.StreamField() != nil)
 }
 
 // WireSize reports the encoded byte width for fixed-size fields.
@@ -83,7 +105,7 @@ func (f Field) WireSize() (int, bool) {
 			return *f.Length, true
 		}
 		return 0, false
-	case FieldTypeString:
+	case FieldTypeString, FieldTypeStream:
 		return 0, false
 	case FieldTypeBytes:
 		if f.Length != nil && *f.Length > 0 {

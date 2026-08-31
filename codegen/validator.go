@@ -65,7 +65,7 @@ func validateMethods(s *Schema, add func(path, msg string)) {
 
 	keys := sortedMethodKeys(s.Methods)
 	methodNameSeen := make(map[string]string, len(keys))
-	insSeen := make(map[byte]string, len(keys))
+	insSeen := make(map[int]string, len(keys))
 
 	for _, key := range keys {
 		path := fmt.Sprintf("methods.%s", key)
@@ -93,18 +93,17 @@ func validateMethods(s *Schema, add func(path, msg string)) {
 			methodNameSeen[methodName] = path
 		}
 
-		insPath := path + ".ins"
-		if firstPath, ok := insSeen[m.INS]; ok {
-			add(insPath, fmt.Sprintf("duplicate INS 0x%02X (already used at %s)", m.INS, firstPath))
-		} else {
-			insSeen[m.INS] = insPath
-		}
-		if isReservedINS(m.INS) {
-			add(insPath, fmt.Sprintf("INS 0x%02X is in reserved ISO 7816 range", m.INS))
-		}
+		validateMethodINSRange(path, m, insSeen, add)
 
 		validateMessage(path+".request", m.Request, true, add)
 		validateMessage(path+".response", m.Response, false, add)
+		if m.HasStream() && m.Request != nil {
+			for i, field := range m.Request.Fields {
+				if field.Location == ParameterLocationP1 || field.Location == ParameterLocationP2 {
+					add(fmt.Sprintf("%s.request.fields[%d].location", path, i), "p1 and p2 are reserved for stream packet index and count")
+				}
+			}
+		}
 	}
 }
 
@@ -115,6 +114,7 @@ func validateMessage(path string, msg *Message, isRequest bool, add func(path, m
 
 	seenP1 := false
 	seenP2 := false
+	streamCount := 0
 
 	for i, f := range msg.Fields {
 		fieldPath := fmt.Sprintf("%s.fields[%d]", path, i)
@@ -123,7 +123,22 @@ func validateMessage(path string, msg *Message, isRequest bool, add func(path, m
 		}
 
 		if !isKnownFieldType(f.Type) {
-			add(fieldPath+".type", fmt.Sprintf("unsupported field type %q (expected u8, u16, u32, bool, ascii, string, bytes, or bytes[N])", f.Type))
+			add(fieldPath+".type", fmt.Sprintf("unsupported field type %q (expected u8, u16, u32, bool, ascii, string, bytes, bytes[N], or stream)", f.Type))
+		}
+		if f.Type == FieldTypeStream {
+			streamCount++
+			if f.MaxLength <= 0 || f.MaxLength > 0x7FFF {
+				add(fieldPath+".max_length", "must be in range 1..32767 for Java Card array addressing")
+			}
+			if f.ChunkSize <= 0 || f.ChunkSize > 0xFF {
+				add(fieldPath+".chunk_size", "must be in range 1..255")
+			}
+			if f.MaxLength > 0 && f.ChunkSize > 0 && f.MaxLength > f.ChunkSize*0xFF {
+				add(fieldPath+".max_length", "must fit in at most 255 declared chunks")
+			}
+			if f.Location != ParameterLocationNone && f.Location != ParameterLocationData {
+				add(fieldPath+".location", "stream payload must use APDU data; p1 and p2 are reserved for packet index and count")
+			}
 		}
 
 		if f.Length != nil {
@@ -163,6 +178,39 @@ func validateMessage(path string, msg *Message, isRequest bool, add func(path, m
 			seenP2 = true
 		default:
 			add(fieldPath+".location", fmt.Sprintf("unsupported field location %q", f.Location))
+		}
+	}
+
+	if streamCount > 0 && len(msg.Fields) != 1 {
+		add(path+".fields", "a streamed request or response must contain exactly one stream field")
+	}
+}
+
+func validateMethodINSRange(path string, m *Method, seen map[int]string, add func(path, msg string)) {
+	insPath := path + ".ins"
+	count := 1
+	if m.HasStream() {
+		count = 6
+	}
+
+	base := int(m.INS)
+	if base+count-1 > 0xFF {
+		add(insPath, fmt.Sprintf("stream instruction range 0x%02X..0x%02X exceeds byte range", base, base+count-1))
+	}
+
+	for offset := 0; offset < count && base+offset <= 0xFF; offset++ {
+		ins := base + offset
+		if firstPath, ok := seen[ins]; ok {
+			if offset == 0 {
+				add(insPath, fmt.Sprintf("duplicate INS 0x%02X (already used at %s)", ins, firstPath))
+			} else {
+				add(insPath, fmt.Sprintf("INS 0x%02X collides with instruction reserved at %s", ins, firstPath))
+			}
+		} else {
+			seen[ins] = insPath
+		}
+		if isReservedINS(byte(ins)) {
+			add(insPath, fmt.Sprintf("INS 0x%02X is in reserved ISO 7816 range", ins))
 		}
 	}
 }
@@ -229,7 +277,7 @@ func isIdentifier(name string) bool {
 
 func isKnownFieldType(t FieldType) bool {
 	switch t {
-	case FieldTypeU8, FieldTypeU16, FieldTypeU32, FieldTypeBool, FieldTypeASCII, FieldTypeString, FieldTypeBytes, FieldTypeBytesFixed:
+	case FieldTypeU8, FieldTypeU16, FieldTypeU32, FieldTypeBool, FieldTypeASCII, FieldTypeString, FieldTypeBytes, FieldTypeBytesFixed, FieldTypeStream:
 		return true
 	default:
 		return false

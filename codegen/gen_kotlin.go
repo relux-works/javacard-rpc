@@ -39,6 +39,7 @@ func GenerateKotlinClient(s *Schema, packageName string) ([]byte, error) {
 const kotlinClientTemplate = `package {{.PackageName}}
 
 import java.io.ByteArrayOutputStream
+{{.StreamImportBlock}}
 
 public interface {{.ProtocolName}} {
     suspend fun select()
@@ -51,6 +52,7 @@ public data class {{.TransportResultName}}(
 
 public interface {{.TransportName}} {
     suspend fun transmit(cla: UByte, ins: UByte, p1: UByte, p2: UByte, data: ByteArray?): {{.TransportResultName}}
+{{.StreamTransportBlock}}
 }
 
 public sealed class {{.ClientExceptionName}}(message: String) : Exception(message) {
@@ -58,11 +60,13 @@ public sealed class {{.ClientExceptionName}}(message: String) : Exception(messag
         {{.ClientExceptionName}}("Status word: 0x%04X".format(sw.toInt()))
 
     public object InvalidResponse : {{.ClientExceptionName}}("Invalid response")
+{{.StreamExceptionBlock}}
 }
 
 public class {{.ClientName}}(
     private val transport: {{.TransportName}},
 ) : {{.ProtocolName}} {
+{{.StreamOwnedFieldsBlock}}
 
     public companion object {
         public val aid: ByteArray = {{.AIDLiteral}}
@@ -75,6 +79,7 @@ public class {{.ClientName}}(
     }
 
 {{.MethodsBlock}}
+{{.StreamHelpersBlock}}
     private fun checkStatusWord(sw: UShort) {
         if (sw != 0x9000u.toUShort()) {
             throw {{.ClientExceptionName}}.StatusWord(sw)
@@ -162,18 +167,23 @@ public class {{.ClientName}}(
 {{.ResponseStructsBlock}}{{.ErrorBlock}}`
 
 type kotlinClientTemplateData struct {
-	PackageName          string
-	ClientName           string
-	ProtocolName         string
-	TransportName        string
-	TransportResultName  string
-	ClientExceptionName  string
-	AIDLiteral           string
-	CLAHex               string
-	ProtocolMethodsBlock string
-	MethodsBlock         string
-	ResponseStructsBlock string
-	ErrorBlock           string
+	PackageName            string
+	ClientName             string
+	ProtocolName           string
+	TransportName          string
+	TransportResultName    string
+	ClientExceptionName    string
+	AIDLiteral             string
+	CLAHex                 string
+	ProtocolMethodsBlock   string
+	MethodsBlock           string
+	StreamImportBlock      string
+	StreamHelpersBlock     string
+	StreamTransportBlock   string
+	StreamExceptionBlock   string
+	StreamOwnedFieldsBlock string
+	ResponseStructsBlock   string
+	ErrorBlock             string
 }
 
 type kotlinMethodData struct {
@@ -211,51 +221,69 @@ func buildKotlinClientTemplateData(s *Schema, packageName string) (*kotlinClient
 		return nil, err
 	}
 
-	methods, structs, err := buildKotlinMethods(appletName, s.Methods)
+	methods, structs, hasStreams, err := buildKotlinMethods(appletName, s.Methods)
 	if err != nil {
 		return nil, err
 	}
 
 	return &kotlinClientTemplateData{
-		PackageName:          packageName,
-		ClientName:           clientName,
-		ProtocolName:         protocolName,
-		TransportName:        transportName,
-		TransportResultName:  transportResultName,
-		ClientExceptionName:  clientExceptionName,
-		AIDLiteral:           formatKotlinByteArrayLiteral(aidBytes),
-		CLAHex:               fmt.Sprintf("0x%02X", s.Applet.CLA),
-		ProtocolMethodsBlock: buildKotlinProtocolMethodsBlock(methods),
-		MethodsBlock:         renderKotlinMethodsBlock(methods),
-		ResponseStructsBlock: renderKotlinResponseStructsBlock(structs),
-		ErrorBlock:           renderKotlinErrorBlock(appletName, s.StatusWords),
+		PackageName:            packageName,
+		ClientName:             clientName,
+		ProtocolName:           protocolName,
+		TransportName:          transportName,
+		TransportResultName:    transportResultName,
+		ClientExceptionName:    clientExceptionName,
+		AIDLiteral:             formatKotlinByteArrayLiteral(aidBytes),
+		CLAHex:                 fmt.Sprintf("0x%02X", s.Applet.CLA),
+		ProtocolMethodsBlock:   buildKotlinProtocolMethodsBlock(methods),
+		MethodsBlock:           renderKotlinMethodsBlock(methods),
+		StreamImportBlock:      renderKotlinStreamImportBlock(hasStreams),
+		StreamHelpersBlock:     renderKotlinStreamHelpersBlock(hasStreams, transportResultName),
+		StreamTransportBlock:   renderKotlinStreamTransportBlock(hasStreams),
+		StreamExceptionBlock:   renderKotlinStreamExceptionBlock(hasStreams, clientExceptionName),
+		StreamOwnedFieldsBlock: renderKotlinStreamOwnedFieldsBlock(hasStreams),
+		ResponseStructsBlock:   renderKotlinResponseStructsBlock(structs),
+		ErrorBlock:             renderKotlinErrorBlock(appletName, s.StatusWords),
 	}, nil
 }
 
-func buildKotlinMethods(appletName string, methods map[string]*Method) ([]kotlinMethodData, []kotlinResponseStructData, error) {
+func buildKotlinMethods(appletName string, methods map[string]*Method) ([]kotlinMethodData, []kotlinResponseStructData, bool, error) {
 	sorted := sortMethodsByINS(methods)
 	result := make([]kotlinMethodData, 0, len(sorted))
 	responseStructs := make([]kotlinResponseStructData, 0)
+	hasStreams := false
 
 	for _, entry := range sorted {
 		m := entry.Method
 		if m == nil {
-			return nil, nil, fmt.Errorf("method %q is nil", entry.Name)
+			return nil, nil, false, fmt.Errorf("method %q is nil", entry.Name)
 		}
 
 		methodName := m.Name
 		if strings.TrimSpace(methodName) == "" {
 			methodName = entry.Name
 		}
+		if m.HasStream() {
+			method, responseStruct, streamErr := buildKotlinStreamMethod(appletName, methodName, m)
+			if streamErr != nil {
+				return nil, nil, false, streamErr
+			}
+			result = append(result, method)
+			if responseStruct != nil {
+				responseStructs = append(responseStructs, *responseStruct)
+			}
+			hasStreams = true
+			continue
+		}
 
 		params, p1Expr, p2Expr, dataPrepLines, dataExpr, hasData, err := buildKotlinRequestSpec(methodName, m.Request)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, false, err
 		}
 
 		returnType, returnLines, responseStruct, err := buildKotlinResponseSpec(appletName, methodName, m.Response)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, false, err
 		}
 
 		if responseStruct != nil {
@@ -276,7 +304,7 @@ func buildKotlinMethods(appletName string, methods map[string]*Method) ([]kotlin
 		})
 	}
 
-	return result, responseStructs, nil
+	return result, responseStructs, hasStreams, nil
 }
 
 func buildKotlinRequestSpec(methodName string, req *Message) (
@@ -654,7 +682,7 @@ func kotlinFieldType(fieldType FieldType) (string, error) {
 		return "UInt", nil
 	case FieldTypeASCII, FieldTypeString:
 		return "String", nil
-	case FieldTypeBytes, FieldTypeBytesFixed:
+	case FieldTypeBytes, FieldTypeBytesFixed, FieldTypeStream:
 		return "ByteArray", nil
 	default:
 		return "", fmt.Errorf("unsupported field type %q", fieldType)

@@ -124,6 +124,10 @@ func run(args []string, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "error: no outputs selected (use --java, --swift, --kotlin, or --all)")
 		return exitCodeGeneration
 	}
+	if generateSwift && schemaHasStreams(schema) {
+		fmt.Fprintln(stderr, "error: stream schemas currently support Java and Kotlin generation; Swift stream generation is not implemented")
+		return exitCodeGeneration
+	}
 
 	appletStem := appletFileStem(schema.Applet.Name)
 	appletLower := strings.ToLower(appletStem)
@@ -159,7 +163,7 @@ func run(args []string, stderr io.Writer) int {
 
 		// write build.gradle
 		gradlePath := filepath.Join(pkgDir, "build.gradle")
-		gradleContent := generateBuildGradle(javaPackage, schema.Applet.Version)
+		gradleContent := generateBuildGradle(javaPackage, schema.Applet.Version, schemaHasStreams(schema))
 		if err := os.WriteFile(gradlePath, []byte(gradleContent), 0o644); err != nil {
 			fmt.Fprintf(stderr, "write %s: %v\n", gradlePath, err)
 			return exitCodeIO
@@ -181,6 +185,33 @@ func run(args []string, stderr io.Writer) int {
 			return exitCodeIO
 		}
 		generated = append(generated, skeletonPath)
+
+		if len(javaResult.StreamEndpointSource) > 0 {
+			streamEndpointPath := filepath.Join(srcDir, javaResult.StreamEndpointName+".java")
+			if err := os.WriteFile(streamEndpointPath, javaResult.StreamEndpointSource, 0o644); err != nil {
+				fmt.Fprintf(stderr, "write %s: %v\n", streamEndpointPath, err)
+				return exitCodeIO
+			}
+			generated = append(generated, streamEndpointPath)
+		}
+
+		if len(javaResult.StreamRuntimeSource) > 0 {
+			streamRuntimePath := filepath.Join(srcDir, javaResult.StreamRuntimeName+".java")
+			if err := os.WriteFile(streamRuntimePath, javaResult.StreamRuntimeSource, 0o644); err != nil {
+				fmt.Fprintf(stderr, "write %s: %v\n", streamRuntimePath, err)
+				return exitCodeIO
+			}
+			generated = append(generated, streamRuntimePath)
+		}
+
+		if len(javaResult.StreamAPDUAdapterSource) > 0 {
+			streamAPDUAdapterPath := filepath.Join(srcDir, javaResult.StreamAPDUAdapterName+".java")
+			if err := os.WriteFile(streamAPDUAdapterPath, javaResult.StreamAPDUAdapterSource, 0o644); err != nil {
+				fmt.Fprintf(stderr, "write %s: %v\n", streamAPDUAdapterPath, err)
+				return exitCodeIO
+			}
+			generated = append(generated, streamAPDUAdapterPath)
+		}
 	}
 
 	if generateSwift {
@@ -270,6 +301,18 @@ func run(args []string, stderr io.Writer) int {
 	return exitCodeSuccess
 }
 
+func schemaHasStreams(schema *codegen.Schema) bool {
+	if schema == nil {
+		return false
+	}
+	for _, method := range schema.Methods {
+		if method.HasStream() {
+			return true
+		}
+	}
+	return false
+}
+
 func generatePackageSwift(appletLower, clientName string) string {
 	return fmt.Sprintf(`// swift-tools-version: 6.2
 
@@ -294,9 +337,17 @@ let package = Package(
 `, appletLower, clientName)
 }
 
-func generateBuildGradle(javaPackage, version string) string {
+func generateBuildGradle(javaPackage, version string, hasStreams bool) string {
 	// extract group from package: io.jcrpc.counter.server -> io.jcrpc
 	group := javaPackageGroup(javaPackage)
+	dependencies := ""
+	if hasStreams {
+		dependencies = `
+dependencies {
+    compileOnly 'com.klinec:jcardsim:3.0.5.9'
+}
+`
+	}
 	return fmt.Sprintf(`plugins {
     id 'java-library'
 }
@@ -316,7 +367,7 @@ tasks.withType(JavaCompile).configureEach {
 repositories {
     mavenCentral()
 }
-`, group, version)
+%s`, group, version, dependencies)
 }
 
 func javaPackageGroup(pkg string) string {

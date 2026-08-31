@@ -148,6 +148,180 @@ SW_OK = { code = 0x9000 }
 	requireValidationError(t, errs, "methods.alpha.ins", "reserved ISO 7816 range")
 }
 
+func TestValidateAcceptsBidirectionalStream(t *testing.T) {
+	s := mustParseSchema(t, `
+[applet]
+name = "Demo"
+version = "1.0.0"
+aid = "A000000001"
+cla = 0x80
+
+[methods.process]
+ins = 0x20
+[methods.process.request]
+fields = [{ name = "requestPacket", type = "stream", max_length = 1792, chunk_size = 192 }]
+[methods.process.response]
+fields = [{ name = "resultPacket", type = "stream", max_length = 1792, chunk_size = 192 }]
+`)
+
+	if errs := Validate(s); len(errs) != 0 {
+		t.Fatalf("expected no validation errors, got %v", errs)
+	}
+}
+
+func TestValidateRejectsInvalidStreamBounds(t *testing.T) {
+	s := mustParseSchema(t, `
+[applet]
+name = "Demo"
+version = "1.0.0"
+aid = "A000000001"
+cla = 0x80
+
+[methods.process]
+ins = 0x20
+[methods.process.request]
+fields = [{ name = "packet", type = "stream", max_length = 0, chunk_size = 256 }]
+`)
+
+	errs := Validate(s)
+	requireValidationError(t, errs, "methods.process.request.fields[0].max_length", "1..32767")
+	requireValidationError(t, errs, "methods.process.request.fields[0].chunk_size", "1..255")
+}
+
+func TestValidateRejectsStreamThatNeedsMoreThan255Chunks(t *testing.T) {
+	s := mustParseSchema(t, `
+[applet]
+name = "Demo"
+version = "1.0.0"
+aid = "A000000001"
+cla = 0x80
+
+[methods.process]
+ins = 0x20
+[methods.process.request]
+fields = [{ name = "packet", type = "stream", max_length = 1024, chunk_size = 4 }]
+`)
+
+	errs := Validate(s)
+	requireValidationError(t, errs, "methods.process.request.fields[0].max_length", "at most 255")
+}
+
+func TestValidateRejectsMixedStreamMessage(t *testing.T) {
+	s := mustParseSchema(t, `
+[applet]
+name = "Demo"
+version = "1.0.0"
+aid = "A000000001"
+cla = 0x80
+
+[methods.process]
+ins = 0x20
+[methods.process.request]
+fields = [
+  { name = "packet", type = "stream", max_length = 1024, chunk_size = 192 },
+  { name = "mode", type = "u8" }
+]
+`)
+
+	errs := Validate(s)
+	requireValidationError(t, errs, "methods.process.request.fields", "exactly one stream field")
+}
+
+func TestValidateRejectsStreamLocationInP1(t *testing.T) {
+	s := mustParseSchema(t, `
+[applet]
+name = "Demo"
+version = "1.0.0"
+aid = "A000000001"
+cla = 0x80
+
+[methods.process]
+ins = 0x20
+[methods.process.request]
+fields = [{ name = "packet", type = "stream", max_length = 1024, chunk_size = 192, location = "p1" }]
+`)
+
+	errs := Validate(s)
+	requireValidationError(t, errs, "methods.process.request.fields[0].location", "p1 and p2 are reserved")
+}
+
+func TestValidateRejectsP1RequestFieldForResponseStream(t *testing.T) {
+	s := mustParseSchema(t, `
+[applet]
+name = "Demo"
+version = "1.0.0"
+aid = "A000000001"
+cla = 0x80
+
+[methods.export]
+ins = 0x20
+[methods.export.request]
+fields = [{ name = "selector", type = "u8", location = "p1" }]
+[methods.export.response]
+fields = [{ name = "packet", type = "stream", max_length = 1024, chunk_size = 192 }]
+`)
+
+	errs := Validate(s)
+	requireValidationError(t, errs, "methods.export.request.fields[0].location", "reserved for stream packet index and count")
+}
+
+func TestValidateRejectsDerivedStreamINSCollision(t *testing.T) {
+	s := mustParseSchema(t, `
+[applet]
+name = "Demo"
+version = "1.0.0"
+aid = "A000000001"
+cla = 0x80
+
+[methods.alpha]
+ins = 0x20
+[methods.alpha.request]
+fields = [{ name = "packet", type = "stream", max_length = 1024, chunk_size = 192 }]
+
+[methods.beta]
+ins = 0x23
+`)
+
+	errs := Validate(s)
+	requireValidationError(t, errs, "methods.beta.ins", "duplicate INS 0x23")
+}
+
+func TestValidateRejectsStreamINSRangeCrossingReservedRange(t *testing.T) {
+	s := mustParseSchema(t, `
+[applet]
+name = "Demo"
+version = "1.0.0"
+aid = "A000000001"
+cla = 0x80
+
+[methods.process]
+ins = 0x5F
+[methods.process.request]
+fields = [{ name = "packet", type = "stream", max_length = 1024, chunk_size = 192 }]
+`)
+
+	errs := Validate(s)
+	requireValidationError(t, errs, "methods.process.ins", "INS 0x60 is in reserved")
+}
+
+func TestValidateRejectsStreamINSRangeOverflow(t *testing.T) {
+	s := mustParseSchema(t, `
+[applet]
+name = "Demo"
+version = "1.0.0"
+aid = "A000000001"
+cla = 0x80
+
+[methods.process]
+ins = 0xFC
+[methods.process.request]
+fields = [{ name = "packet", type = "stream", max_length = 1024, chunk_size = 192 }]
+`)
+
+	errs := Validate(s)
+	requireValidationError(t, errs, "methods.process.ins", "exceeds byte range")
+}
+
 func TestValidateRejectsInvalidMethodName(t *testing.T) {
 	s := mustParseSchema(t, `
 [applet]

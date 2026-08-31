@@ -14,6 +14,13 @@ counter.toml  ──►  jcrpc-gen  ──►  CounterClient.swift      (Swift h
 
 You write your applet logic by extending the generated skeleton. The framework handles APDU encoding/decoding, field packing, and error mapping.
 
+For a schema containing `stream`, Java generation additionally emits one
+applet-level `*BoundedStreamRuntime`, its `*StreamEndpoint` contract, and a
+`*StreamAPDUAdapter`. Kotlin generation puts upload, recovery, download, close,
+abort, and transport invalidation directly in the typed generated client. The
+application supplies only business handlers and an APDU transport; it does not
+implement the stream session state machine.
+
 ## Quick start
 
 ```bash
@@ -67,9 +74,50 @@ response = [{ name = "value", type = "u16" }]
 UNDERFLOW = { code = "0x6985", description = "Counter would go negative" }
 ```
 
-Supported types: `u8`, `u16`, `u32`, `bool`, `ascii`, `string`, `bytes`, `bytes[N]`.
+Supported types: `u8`, `u16`, `u32`, `bool`, `ascii`, `string`, `bytes`, `bytes[N]`, and bounded multi-APDU `stream` values.
 
-See [IDL specification](references/idl-spec.md) for the full format.
+See [IDL specification](.spec/idl.md) for the full format and six-command
+stream lifecycle. Ordinary values use generated fixed-order byte packing, not
+Protocol Buffers. Stream payloads are opaque `ByteArray` values whose internal
+format belongs to the calling application. Stream generation currently targets
+the Java Card server and Kotlin client; generate those explicitly because the
+Swift stream client is not implemented yet.
+
+All streamed methods in one selected applet share exactly one generated session
+manager and one transient workspace. This serializes large operations, prevents
+cross-method state corruption, and keeps reset/deselect cleanup inside generated
+code. The generated Java adapter consumes fragmented incoming APDU data before
+dispatch. On the host, any failed or cancelled stream operation performs a
+best-effort abort and then calls `invalidateStreamSession()` on the transport.
+An exception thrown during either cleanup step is ignored so it cannot replace
+the authoritative protocol failure or coroutine cancellation.
+The generated client also rejects a concurrent streamed call locally with
+`StreamBusy`, without sending an APDU that could abort the active call.
+
+The applet itself still owns normal Java Card lifecycle wiring. Instantiate the
+generated stream adapter once, let it inspect the APDU before ordinary dispatch,
+and forward deselection to it. The session manager remains generated:
+
+```java
+public final class MyApplet extends Applet {
+    private final MyServiceLogic logic = new MyServiceLogic();
+    private final MyServiceStreamAPDUAdapter streams =
+        new MyServiceStreamAPDUAdapter(logic);
+
+    public void process(APDU apdu) {
+        if (selectingApplet()) return;
+        if (streams.processIfStream(apdu)) return;
+        logic.processOrdinary(apdu); // Existing non-stream dispatch.
+    }
+
+    public void deselect() {
+        streams.deselect();
+    }
+}
+```
+
+This wrapper does not implement stream state or recovery. It only connects the
+generated code to the applet lifecycle.
 
 ## Architecture
 
@@ -108,6 +156,12 @@ let value = try await counter.increment(amount: 5)
 
 Kotlin/JVM follows the same DI pattern through generated `CounterTransport` plus the standalone runtime package `javacard-rpc-client-kotlin`.
 
+For a stream-capable Kotlin transport, also implement
+`invalidateStreamSession()`. It must synchronously make the selected applet
+session unusable, normally by closing the logical channel; the next operation
+then starts from a fresh select. The generated client invokes it after every
+non-terminal failure, including coroutine cancellation.
+
 ## Project structure
 
 ```
@@ -120,7 +174,8 @@ javacard-rpc/
 │   ├── applet/           # Java applet + jCardSim tests
 │   ├── cli/              # Swift E2E test runner
 │   └── kotlin-cli/       # Kotlin/JVM E2E test runner
-├── references/           # IDL specification
+├── .spec/                # IDL and protocol specifications
+├── UNRESOLVED_QUESTIONS.md # Deferred cross-platform decisions
 └── scripts/              # Setup/teardown
 ```
 
@@ -139,7 +194,7 @@ Generated code depends on thin runtime libraries:
 ## Testing
 
 ```bash
-# Codegen unit tests (48 tests)
+# Codegen plus generated Java and Kotlin stream harnesses
 make test-codegen
 
 # Full E2E (build everything + run Swift + Kotlin integration harnesses)
@@ -157,7 +212,23 @@ make e2e
 | Build Swift E2E CLI | `make build-cli` |
 | Build Kotlin E2E CLI | `make build-kotlin-cli` |
 | Run codegen tests | `make test-codegen` |
+| Convert generated stream applet to CAP | `JCRPC_ANT_JAVACARD_JAR=... JCRPC_JCKIT_DIR=... make test-cap` |
+| Run release validation including CAP conversion | `JCRPC_ANT_JAVACARD_JAR=... JCRPC_JCKIT_DIR=... make release-check` |
 | Full E2E pipeline | `make e2e` |
+
+## Tooling
+
+| Tool | Purpose | Command | Output |
+| --- | --- | --- | --- |
+| Go | Build codegen and run parser, generator, JVM harness, and CLI tests | `cd codegen && go test ./...` | Go test cache; task-local smoke files use `.temp/` |
+| Gradle | Compile generated Java/Kotlin packages and run Kotlin/JVM integration tests | `gradle -p <generated-package> build` | Package-local `build/` |
+| `javac` / `java` | Compile and execute generated Java runtime and fragmented-APDU harnesses | Run through `go test ./...` | Go-managed temporary directories |
+| Ant + ant-javacard | Convert the generated Java stream applet to a verified CAP | `JCRPC_ANT_JAVACARD_JAR=... JCRPC_JCKIT_DIR=... make test-cap` | Go-managed temporary CAP |
+| Make | Stable project entry points and release gate | `make generate`, `make test-codegen`, `make test-applet`, `make test-cap`, `make release-check`, `make e2e` | Generated examples under `examples/counter/generated/`; build products remain local |
+
+Go tests use their own temporary directories. Local task runs and generated
+smoke packages belong under `.temp/`. The generated Kotlin stream harness runs
+through `gradle test`; the Java stream runtime harness uses `javac` and `java`.
 
 <!-- relux-ecosystem:start -->
 

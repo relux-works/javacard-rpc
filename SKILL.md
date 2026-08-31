@@ -70,7 +70,58 @@ See [.spec/idl.md](.spec/idl.md) for the full specification.
 
 TOML IDL defines: applet metadata, methods (INS, request/response fields), status words.
 
-**Field types:** `u8`, `u16`, `u32`, `bool`, `ascii`, `string`, `bytes`, `bytes[N]`
+**Field types:** `u8`, `u16`, `u32`, `bool`, `ascii`, `string`, `bytes`, `bytes[N]`, `stream`
+
+`stream` is a bounded opaque byte array transported through six consecutive
+instructions: write/invoke, close write, recover pending result descriptor,
+read result chunk, close read, and abort. It is half-duplex and supports a
+request stream, a response stream, or both. Use it for payloads that do not fit
+one short APDU; do not add a general-purpose serializer. The application owns
+the byte format inside the stream. Stream generation currently supports the
+Java Card server and Kotlin client, not Swift; use explicit `--java` and
+`--kotlin` outputs instead of `--all` for a stream schema.
+
+Stream lifecycle code is generated, not supplied by an applet or application
+implementation:
+
+- the Java skeleton owns one applet-level session manager shared by all streamed
+  methods, one transient workspace sized to the largest declared stream, digest
+  scratch, reset detection, and reusable failure objects;
+- the generated Java APDU adapter receives every incoming fragment before
+  dispatch and sends from preallocated transient storage;
+- applet code implements only the generated typed buffer handler and uses
+  `failStream(statusWord)` for a business failure;
+- the Kotlin client owns upload, idempotent recovery, pull, digest verification,
+  close, abort, cancellation cleanup, and one atomic owner guard across all
+  generated streamed methods;
+- a Kotlin transport for a stream schema implements
+  `invalidateStreamSession()` by synchronously closing its logical channel or
+  otherwise forcing a fresh select.
+
+Do not place another stream session manager around generated clients or inside
+individual handlers. That creates competing owners and defeats cross-method
+serialization and reset cleanup.
+
+The concrete applet only wires lifecycle into the generated adapter. Construct
+one adapter for the applet instance, call `processIfStream(apdu)` before the
+ordinary generated dispatcher, and forward `deselect()` to the adapter. Do not
+copy its runtime or state machine into the applet:
+
+```java
+private final ServiceLogic logic = new ServiceLogic();
+private final ServiceStreamAPDUAdapter streams =
+    new ServiceStreamAPDUAdapter(logic);
+
+public void process(APDU apdu) {
+    if (selectingApplet()) return;
+    if (streams.processIfStream(apdu)) return;
+    logic.processOrdinary(apdu);
+}
+
+public void deselect() {
+    streams.deselect();
+}
+```
 
 ```toml
 [applet]

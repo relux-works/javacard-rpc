@@ -69,6 +69,60 @@ func TestRunValidateOnlySuccess(t *testing.T) {
 	}
 }
 
+func TestRunValidateOnlyAcceptsBidirectionalStream(t *testing.T) {
+	t.Parallel()
+
+	streamSchema := writeFile(t, t.TempDir(), "stream.toml", `
+[applet]
+name = "StreamDemo"
+version = "1.0.0"
+aid = "F000000102"
+cla = 0xB0
+
+[methods.process]
+ins = 0x20
+[methods.process.request]
+fields = [{ name = "requestPacket", type = "stream", max_length = 1792, chunk_size = 192 }]
+[methods.process.response]
+fields = [{ name = "resultPacket", type = "stream", max_length = 1792, chunk_size = 192 }]
+`)
+
+	var stderr bytes.Buffer
+	code := run([]string{"--validate-only", streamSchema}, &stderr)
+	if code != exitCodeSuccess {
+		t.Fatalf("run returned exit code %d, stderr:\n%s", code, stderr.String())
+	}
+}
+
+func TestRunValidateOnlyRejectsDerivedStreamINSCollision(t *testing.T) {
+	t.Parallel()
+
+	streamSchema := writeFile(t, t.TempDir(), "stream-collision.toml", `
+[applet]
+name = "StreamDemo"
+version = "1.0.0"
+aid = "F000000102"
+cla = 0xB0
+
+[methods.process]
+ins = 0x20
+[methods.process.request]
+fields = [{ name = "requestPacket", type = "stream", max_length = 1792, chunk_size = 192 }]
+
+[methods.conflict]
+ins = 0x24
+`)
+
+	var stderr bytes.Buffer
+	code := run([]string{"--validate-only", streamSchema}, &stderr)
+	if code != exitCodeValidation {
+		t.Fatalf("run returned exit code %d, want %d, stderr:\n%s", code, exitCodeValidation, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "INS 0x24") {
+		t.Fatalf("stderr missing derived collision: %s", stderr.String())
+	}
+}
+
 func TestRunInvalidSchemaReturnsValidationExitCode(t *testing.T) {
 	t.Parallel()
 
@@ -136,6 +190,75 @@ func TestRunJavaOnlyWritesJavaPackage(t *testing.T) {
 	swiftDir := filepath.Join(outDir, "counter-client-swift")
 	if _, err := os.Stat(swiftDir); !os.IsNotExist(err) {
 		t.Fatalf("did not expect swift package dir %s", swiftDir)
+	}
+}
+
+func TestRunJavaStreamWritesGeneratedSessionManagerAndAPDUAdapter(t *testing.T) {
+	t.Parallel()
+
+	outDir := t.TempDir()
+	streamSchema := filepath.Join("..", "..", "testdata", "stream.toml")
+	var stderr bytes.Buffer
+	code := run([]string{
+		"--java", "io.jcrpc.streamdemo.server",
+		"--out-dir", outDir,
+		streamSchema,
+	}, &stderr)
+	if code != exitCodeSuccess {
+		t.Fatalf("run returned exit code %d, stderr:\n%s", code, stderr.String())
+	}
+
+	javaSrcDir := filepath.Join(outDir, "streamdemo-server-javacard",
+		"src", "main", "java", "io", "jcrpc", "streamdemo", "server")
+	assertFileExists(t, filepath.Join(javaSrcDir, "StreamDemoSkeleton.java"))
+	assertFileExists(t, filepath.Join(javaSrcDir, "StreamDemoStreamEndpoint.java"))
+	assertFileExists(t, filepath.Join(javaSrcDir, "StreamDemoBoundedStreamRuntime.java"))
+	assertFileExists(t, filepath.Join(javaSrcDir, "StreamDemoStreamAPDUAdapter.java"))
+	assertFileContains(t, filepath.Join(outDir, "streamdemo-server-javacard", "build.gradle"),
+		"compileOnly 'com.klinec:jcardsim:3.0.5.9'")
+}
+
+func TestRunKotlinStreamWritesRecoverableClient(t *testing.T) {
+	t.Parallel()
+
+	outDir := t.TempDir()
+	streamSchema := filepath.Join("..", "..", "testdata", "stream.toml")
+	var stderr bytes.Buffer
+	code := run([]string{
+		"--kotlin", "io.jcrpc.streamdemo.client",
+		"--out-dir", outDir,
+		streamSchema,
+	}, &stderr)
+	if code != exitCodeSuccess {
+		t.Fatalf("run returned exit code %d, stderr:\n%s", code, stderr.String())
+	}
+
+	kotlinPath := filepath.Join(outDir, "streamdemo-client-kotlin", "src", "main", "kotlin",
+		"io", "jcrpc", "streamdemo", "client", "StreamDemoClient.kt")
+	assertFileExists(t, kotlinPath)
+	assertFileContains(t, kotlinPath, "override suspend fun processPacket(requestPacket: ByteArray): ByteArray")
+	assertFileContains(t, kotlinPath, "bestEffortStreamAbort(0x25u)")
+}
+
+func TestRunAllRejectsStreamBeforeWritingPartialOutputs(t *testing.T) {
+	t.Parallel()
+
+	outDir := t.TempDir()
+	streamSchema := filepath.Join("..", "..", "testdata", "stream.toml")
+	var stderr bytes.Buffer
+	code := run([]string{"--all", "--out-dir", outDir, streamSchema}, &stderr)
+	if code != exitCodeGeneration {
+		t.Fatalf("run returned exit code %d, want %d, stderr:\n%s", code, exitCodeGeneration, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "Swift stream generation is not implemented") {
+		t.Fatalf("stderr missing Swift stream limitation:\n%s", stderr.String())
+	}
+	entries, err := os.ReadDir(outDir)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("stream --all wrote partial outputs: %v", entries)
 	}
 }
 
@@ -228,7 +351,7 @@ func TestGeneratedPackageSwiftMatchesGolden(t *testing.T) {
 func TestGeneratedBuildGradleMatchesGolden(t *testing.T) {
 	t.Parallel()
 
-	got := generateBuildGradle("io.jcrpc.counter.server", "1.0.0")
+	got := generateBuildGradle("io.jcrpc.counter.server", "1.0.0", false)
 	goldenPath := filepath.Join("..", "..", "testdata", "build.gradle.golden")
 	if _, err := os.Stat(goldenPath); os.IsNotExist(err) {
 		os.WriteFile(goldenPath, []byte(got), 0o644)
@@ -240,6 +363,15 @@ func TestGeneratedBuildGradleMatchesGolden(t *testing.T) {
 	}
 	if got != string(want) {
 		t.Fatalf("build.gradle mismatch:\n%s", lineDiff(want, []byte(got)))
+	}
+}
+
+func TestGeneratedStreamBuildGradleIncludesJavaCardCompileAPI(t *testing.T) {
+	t.Parallel()
+
+	got := generateBuildGradle("io.jcrpc.streamdemo.server", "1.0.0", true)
+	if !strings.Contains(got, "compileOnly 'com.klinec:jcardsim:3.0.5.9'") {
+		t.Fatalf("stream build.gradle does not include the Java Card compile API:\n%s", got)
 	}
 }
 

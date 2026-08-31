@@ -1,6 +1,7 @@
 package codegen
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -108,4 +109,93 @@ func TestGenerateKotlinClientSupportsASCIIAndString(t *testing.T) {
 	requireContains(t, src, "override suspend fun echoMessage(message: String): String")
 	requireContains(t, src, "val data = utf8Bytes(message)")
 	requireContains(t, src, "return readString(response.data, 0)")
+}
+
+func TestGenerateKotlinClientSupportsBidirectionalStreamLifecycle(t *testing.T) {
+	s, err := ParseFile(filepath.Join("testdata", "stream.toml"))
+	if err != nil {
+		t.Fatalf("ParseFile returned error: %v", err)
+	}
+	if errs := Validate(s); len(errs) > 0 {
+		t.Fatalf("Validate returned errors: %v", errs)
+	}
+
+	got, err := GenerateKotlinClient(s, "io.jcrpc.streamdemo.client")
+	if err != nil {
+		t.Fatalf("GenerateKotlinClient returned error: %v", err)
+	}
+	src := string(got)
+
+	requireContains(t, src, "import java.security.MessageDigest")
+	requireContains(t, src, "override suspend fun processPacket(requestPacket: ByteArray): ByteArray")
+	requireContains(t, src, "transmitIdempotent(0x20u, packetIndex.toUByte(), requestPacketCount.toUByte(), chunk)")
+	requireContains(t, src, "transport.transmit(CLA, 0x21u, 0x00u, 0x00u, requestCloseData)")
+	requireContains(t, src, "transmitIdempotent(0x22u, 0x00u, 0x00u, null)")
+	requireContains(t, src, "transmitIdempotent(0x23u, packetIndex.toUByte(), streamDescriptor.packetCount.toUByte(), null)")
+	requireContains(t, src, "transmitIdempotent(0x24u, 0x00u, 0x00u, responseCloseData)")
+	requireContains(t, src, "bestEffortStreamAbort(0x25u)")
+	requireContains(t, src, "fun invalidateStreamSession()")
+	requireContains(t, src, "private fun bestEffortInvalidateStreamSession()")
+	requireContains(t, src, "bestEffortInvalidateStreamSession()")
+	requireContains(t, src, "private val streamSessionInUse = AtomicBoolean(false)")
+	requireContains(t, src, "throw StreamDemoClientException.StreamBusy")
+	requireContains(t, src, "streamSessionInUse.set(false)")
+	requireContains(t, src, "if (data.size != 35) invalidResponse()")
+	requireContains(t, src, "MessageDigest.getInstance(\"SHA-256\").digest(streamResult)")
+}
+
+func TestGenerateKotlinClientRetriesStreamRequestCloseForShortResponse(t *testing.T) {
+	s := &Schema{
+		Applet: Applet{Name: "Demo", AID: "A000000001", CLA: 0x80},
+		Methods: map[string]*Method{
+			"sign": {
+				Name: "sign",
+				INS:  0x30,
+				Request: &Message{Fields: []Field{{
+					Name: "payload", Type: FieldTypeStream, MaxLength: 1024, ChunkSize: 192,
+				}}},
+				Response: &Message{Fields: []Field{{Name: "receipt", Type: FieldTypeU16}}},
+			},
+		},
+	}
+
+	got, err := GenerateKotlinClient(s, "demo")
+	if err != nil {
+		t.Fatalf("GenerateKotlinClient returned error: %v", err)
+	}
+	src := string(got)
+	requireContains(t, src, "override suspend fun sign(payload: ByteArray): UShort")
+	requireContains(t, src, "val response = transmitIdempotent(0x31u, 0x00u, 0x00u, requestCloseData)")
+	requireContains(t, src, "val decodedResponse = run {")
+	requireContains(t, src, "return@run readU16(response.data, 0)")
+	requireContains(t, src, "streamTerminal = true")
+	requireContains(t, src, "return decodedResponse")
+}
+
+func TestGenerateKotlinClientRecoversResponseOnlyStreamDescriptor(t *testing.T) {
+	s := &Schema{
+		Applet: Applet{Name: "Demo", AID: "A000000001", CLA: 0x80},
+		Methods: map[string]*Method{
+			"export": {
+				Name: "export",
+				INS:  0x40,
+				Request: &Message{Fields: []Field{{
+					Name: "selector", Type: FieldTypeU8, Location: ParameterLocationData,
+				}}},
+				Response: &Message{Fields: []Field{{
+					Name: "packet", Type: FieldTypeStream, MaxLength: 2048, ChunkSize: 224,
+				}}},
+			},
+		},
+	}
+
+	got, err := GenerateKotlinClient(s, "demo")
+	if err != nil {
+		t.Fatalf("GenerateKotlinClient returned error: %v", err)
+	}
+	src := string(got)
+	requireContains(t, src, "override suspend fun export(selector: UByte): ByteArray")
+	requireContains(t, src, "transport.transmit(CLA, 0x40u, 0x00u, 0x00u, data)")
+	requireContains(t, src, "transmitIdempotent(0x42u, 0x00u, 0x00u, null)")
+	requireContains(t, src, "parseStreamDescriptor(descriptorResponse.data, 2048, 224)")
 }
