@@ -28,6 +28,14 @@ Thumbs.db
 # Temp
 .temp/
 
+# Local agent runtimes and generated instructions
+AGENTS.md
+.agents/
+.claude/
+.codex/
+.local/
+agents/
+
 # Task board
 task-board.config.json
 .task-board/
