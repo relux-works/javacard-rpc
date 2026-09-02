@@ -31,7 +31,7 @@ const kotlinStreamHelpers = `    private data class StreamDescriptor(
         return StreamDescriptor(packetCount, totalLength, data.copyOfRange(3, 35))
     }
 
-    private fun verifyEmptySuccess(response: {{.TransportResultName}}) {
+    private fun verifyEmptySuccess(response: APDUResponse) {
         checkStatusWord(response.sw)
         if (response.data.isNotEmpty()) invalidResponse()
     }
@@ -41,14 +41,14 @@ const kotlinStreamHelpers = `    private data class StreamDescriptor(
         p1: UByte,
         p2: UByte,
         data: ByteArray?,
-    ): {{.TransportResultName}} {
+    ): APDUResponse {
         return try {
-            transport.transmit(CLA, ins, p1, p2, data)
+            transmit(CLA, ins, p1, p2, data)
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (firstFailure: Exception) {
             try {
-                transport.transmit(CLA, ins, p1, p2, data)
+                transmit(CLA, ins, p1, p2, data)
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (_: Exception) {
@@ -59,7 +59,7 @@ const kotlinStreamHelpers = `    private data class StreamDescriptor(
 
     private suspend fun bestEffortStreamAbort(ins: UByte) {
         try {
-            val response = transport.transmit(CLA, ins, 0x00u, 0x00u, null)
+            val response = transmit(CLA, ins, 0x00u, 0x00u, null)
             verifyEmptySuccess(response)
         } catch (_: Throwable) {
             // The original operation failure remains authoritative.
@@ -68,7 +68,7 @@ const kotlinStreamHelpers = `    private data class StreamDescriptor(
 
     private fun bestEffortInvalidateStreamSession() {
         try {
-            transport.invalidateStreamSession()
+            transport.invalidateSession()
         } catch (_: Throwable) {
             // The original operation failure remains authoritative.
         }
@@ -83,25 +83,11 @@ func renderKotlinStreamImportBlock(hasStreams bool) string {
 	return "import java.security.MessageDigest\nimport java.util.concurrent.CancellationException\nimport java.util.concurrent.atomic.AtomicBoolean\n"
 }
 
-func renderKotlinStreamHelpersBlock(hasStreams bool, transportResultName string) string {
+func renderKotlinStreamHelpersBlock(hasStreams bool) string {
 	if !hasStreams {
 		return ""
 	}
-	return strings.ReplaceAll(kotlinStreamHelpers, "{{.TransportResultName}}", transportResultName)
-}
-
-func renderKotlinStreamTransportBlock(hasStreams bool) string {
-	if !hasStreams {
-		return ""
-	}
-	return `
-    /**
-     * Synchronously invalidate the selected applet session after a failed or
-     * cancelled generated stream operation. The transport should close its
-     * logical channel or otherwise force a fresh select before reuse.
-     */
-    fun invalidateStreamSession()
-`
+	return kotlinStreamHelpers
 }
 
 func renderKotlinStreamExceptionBlock(hasStreams bool, clientExceptionName string) string {
@@ -247,7 +233,7 @@ func buildKotlinRequestCloseForDescriptorLines(baseINS byte, requestName string)
 	return []string{
 		fmt.Sprintf("    val requestCloseData = streamCloseData(%s)", requestName),
 		"    val descriptorResponse = try {",
-		fmt.Sprintf("        transport.transmit(CLA, 0x%02Xu, 0x00u, 0x00u, requestCloseData)", closeINS),
+		fmt.Sprintf("        transmit(CLA, 0x%02Xu, 0x00u, 0x00u, requestCloseData)", closeINS),
 		"    } catch (cancellation: CancellationException) {",
 		"        throw cancellation",
 		"    } catch (closeFailure: Exception) {",
@@ -279,7 +265,7 @@ func buildKotlinResponseOnlyInvokeLines(baseINS byte, p1Expr, p2Expr, dataExpr s
 	}
 	return []string{
 		"    val descriptorResponse = try {",
-		fmt.Sprintf("        transport.transmit(CLA, 0x%02Xu, %s, %s, %s)", baseINS, p1Expr, p2Expr, dataArg),
+		fmt.Sprintf("        transmit(CLA, 0x%02Xu, %s, %s, %s)", baseINS, p1Expr, p2Expr, dataArg),
 		"    } catch (cancellation: CancellationException) {",
 		"        throw cancellation",
 		"    } catch (invokeFailure: Exception) {",

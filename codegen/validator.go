@@ -97,6 +97,11 @@ func validateMethods(s *Schema, add func(path, msg string)) {
 
 		validateMessage(path+".request", m.Request, true, add)
 		validateMessage(path+".response", m.Response, false, add)
+		if m.HasStream() && (m.Response == nil || m.Response.StreamField() == nil) {
+			if length, fixed := fixedMessageLength(responseFields(m.Response)); fixed && length > 0xFF {
+				add(path+".response.fields", "fixed short response must fit in 255 bytes")
+			}
+		}
 		if m.HasStream() && m.Request != nil {
 			for i, field := range m.Request.Fields {
 				if field.Location == ParameterLocationP1 || field.Location == ParameterLocationP2 {

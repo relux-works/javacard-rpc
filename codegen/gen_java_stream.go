@@ -40,6 +40,7 @@ public interface {{.StreamEndpointName}} {
             boolean hasResponseStream,
             short responseMaxLength,
             short responseChunkSize,
+            short exactShortResponseLength,
             Handler handler,
             byte p1,
             byte p2,
@@ -55,8 +56,10 @@ public interface {{.StreamEndpointName}} {
     interface Handler {
         /**
          * Execute one generated method. Input and output may share storage.
-         * Return 0..outputCapacity. Use the generated skeleton's
-         * failStream(statusWord) helper for a business status word.
+         * Return 0..outputCapacity. For a fixed short response, outputCapacity
+         * is the exact declared width and the returned length must equal it.
+         * Use the generated skeleton's failStream(statusWord) helper for a
+         * business status word.
          */
         short execute(
                 byte methodId,
@@ -139,6 +142,7 @@ public final class {{.StreamRuntimeName}} implements {{.StreamEndpointName}} {
     private short requestChunkSize;
     private short responseMaxLength;
     private short responseChunkSize;
+    private short exactShortResponseLength;
     private Handler activeHandler;
 
     private short inputLength;
@@ -181,6 +185,7 @@ public final class {{.StreamRuntimeName}} implements {{.StreamEndpointName}} {
             boolean responseEnabled,
             short responseLimit,
             short responseChunk,
+            short shortResponseLength,
             Handler handler,
             byte p1,
             byte p2,
@@ -207,7 +212,8 @@ public final class {{.StreamRuntimeName}} implements {{.StreamEndpointName}} {
                 }
                 if (state == STATE_EMPTY) {
                     begin(methodId, requestEnabled, requestLimit, requestChunk,
-                            responseEnabled, responseLimit, responseChunk, handler);
+                            responseEnabled, responseLimit, responseChunk,
+                            shortResponseLength, handler);
                 } else if (activeMethod != methodId) {
                     rejectWithoutClearing(SW_WRONG_STATE);
                 }
@@ -265,17 +271,24 @@ public final class {{.StreamRuntimeName}} implements {{.StreamEndpointName}} {
             boolean responseEnabled,
             short responseLimit,
             short responseChunk,
+            short shortResponseLength,
             Handler handler) {
         short required = requestEnabled ? requestLimit : (short) 0;
         if (responseEnabled && responseLimit > required) {
             required = responseLimit;
         }
-        if (!responseEnabled && required < SHORT_RESPONSE_CAPACITY) {
-            required = SHORT_RESPONSE_CAPACITY;
+        short shortCapacity = shortResponseLength >= 0 ?
+                shortResponseLength : SHORT_RESPONSE_CAPACITY;
+        if (!responseEnabled && required < shortCapacity) {
+            required = shortCapacity;
         }
         if ((!requestEnabled && !responseEnabled) || handler == null ||
                 (requestEnabled && (requestLimit <= 0 || requestChunk <= 0)) ||
                 (responseEnabled && (responseLimit <= 0 || responseChunk <= 0)) ||
+                (responseEnabled && shortResponseLength != (short) -1) ||
+                (!responseEnabled &&
+                        (shortResponseLength < (short) -1 ||
+                                shortResponseLength > SHORT_RESPONSE_CAPACITY)) ||
                 required > workspace.length) {
             fail(SW_NO_MEMORY);
         }
@@ -287,6 +300,7 @@ public final class {{.StreamRuntimeName}} implements {{.StreamEndpointName}} {
         requestChunkSize = requestChunk;
         responseMaxLength = responseLimit;
         responseChunkSize = responseChunk;
+        exactShortResponseLength = shortResponseLength;
         activeHandler = handler;
     }
 
@@ -390,7 +404,9 @@ public final class {{.StreamRuntimeName}} implements {{.StreamEndpointName}} {
 
     private void preflightHandlerResponse(short responseCapacity) {
         ensureResponseCapacity(responseCapacity,
-                hasResponseStream ? DESCRIPTOR_LENGTH : SHORT_RESPONSE_CAPACITY);
+                hasResponseStream ? DESCRIPTOR_LENGTH :
+                        (exactShortResponseLength >= 0 ?
+                                exactShortResponseLength : SHORT_RESPONSE_CAPACITY));
     }
 
     private short executeOnce(
@@ -401,10 +417,15 @@ public final class {{.StreamRuntimeName}} implements {{.StreamEndpointName}} {
             short responseOffset,
             short responseCapacity,
             boolean preserveInputCloseReceipt) {
-        short outputCapacity = hasResponseStream ? responseMaxLength : SHORT_RESPONSE_CAPACITY;
+        short outputCapacity = hasResponseStream ? responseMaxLength :
+                (exactShortResponseLength >= 0 ?
+                        exactShortResponseLength : SHORT_RESPONSE_CAPACITY);
         short produced = activeHandler.execute(activeMethod, input, inputOffset, inputSize,
                 workspace, (short) 0, outputCapacity);
-        if (produced < 0 || produced > outputCapacity || (hasResponseStream && produced == 0)) {
+        if (produced < 0 || produced > outputCapacity ||
+                (hasResponseStream && produced == 0) ||
+                (!hasResponseStream && exactShortResponseLength >= 0 &&
+                        produced != exactShortResponseLength)) {
             fail(SW_WRONG_LENGTH);
         }
 
@@ -578,6 +599,7 @@ public final class {{.StreamRuntimeName}} implements {{.StreamEndpointName}} {
         requestChunkSize = 0;
         responseMaxLength = 0;
         responseChunkSize = 0;
+        exactShortResponseLength = (short) -1;
         activeHandler = null;
         inputLength = 0;
         lastChunkOffset = 0;
@@ -876,7 +898,8 @@ func buildJavaStreamDispatchSupport(data *javaTemplateData, methods []javaMethod
 			fmt.Fprintf(&b, "                case %s_%s:\n", method.INSConstName, suffixes[i])
 			fmt.Fprintf(&b, "                    return streamSession.dispatch((byte) %d, %s.%s,\n", methodID, data.StreamEndpointName, operations[i])
 			fmt.Fprintf(&b, "                            %t, (short) %d, (short) %d,\n", requestEnabled, requestMax, requestChunk)
-			fmt.Fprintf(&b, "                            %t, (short) %d, (short) %d, this,\n", responseEnabled, responseMax, responseChunk)
+			fmt.Fprintf(&b, "                            %t, (short) %d, (short) %d, (short) %d, this,\n",
+				responseEnabled, responseMax, responseChunk, method.ExactShortResponseLength)
 			b.WriteString("                            p1, p2, requestBuffer, requestOffset, requestLength,\n")
 			b.WriteString("                            responseBuffer, responseOffset, responseCapacity);\n")
 		}

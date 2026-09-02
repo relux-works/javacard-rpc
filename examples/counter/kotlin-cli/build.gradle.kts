@@ -12,7 +12,7 @@ kotlin {
 
 dependencies {
     implementation("counter:counter-client-kotlin")
-    implementation("io.jcrpc:javacard-rpc-client-kotlin")
+    implementation("io.jcrpc:javacard-rpc-client-kotlin:0.2.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
 }
 

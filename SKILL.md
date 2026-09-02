@@ -94,8 +94,8 @@ implementation:
 - the Kotlin client owns upload, idempotent recovery, pull, digest verification,
   close, abort, cancellation cleanup, and one atomic owner guard across all
   generated streamed methods;
-- a Kotlin transport for a stream schema implements
-  `invalidateStreamSession()` by synchronously closing its logical channel or
+- the shared Kotlin `APDUTransport` implements `invalidateSession()` by
+  synchronously closing its logical channel or
   otherwise forcing a fresh select.
 
 Do not place another stream session manager around generated clients or inside
@@ -165,28 +165,9 @@ let client = CounterClient(transport: TCPTransport(host: "127.0.0.1", port: 9025
 
 ```kotlin
 import counter.CounterClient
-import counter.CounterTransport
-import counter.CounterTransportResult
-import io.jcrpc.client.APDUCommand
-import io.jcrpc.client.APDUTransport
 import io.jcrpc.client.TCPTransport
 
-private class CounterBridgeTransport(
-    private val transport: APDUTransport,
-) : CounterTransport {
-    override suspend fun transmit(
-        cla: UByte,
-        ins: UByte,
-        p1: UByte,
-        p2: UByte,
-        data: ByteArray?,
-    ): CounterTransportResult {
-        val response = transport.transmit(APDUCommand(cla = cla, ins = ins, p1 = p1, p2 = p2, data = data))
-        return CounterTransportResult(sw = response.sw, data = response.data)
-    }
-}
-
-val client = CounterClient(transport = CounterBridgeTransport(TCPTransport()))
+val client = CounterClient(transport = TCPTransport())
 ```
 
 ### Java Server (host wiring)
@@ -202,7 +183,7 @@ val client = CounterClient(transport = CounterBridgeTransport(TCPTransport()))
 | Package | GitHub | Purpose |
 |---------|--------|---------|
 | `javacard-rpc-client-swift` | relux-works/javacard-rpc-client-swift | Swift transport: APDUCommand, APDUResponse, TCPTransport, DataPacker |
-| `javacard-rpc-client-kotlin` | relux-works/javacard-rpc-client-kotlin | Kotlin/JVM transport: APDUCommand, APDUResponse, TCPTransport, DataPacker |
+| `javacard-rpc-client-kotlin` | relux-works/javacard-rpc-client-kotlin | Kotlin/JVM shared transport and lifecycle: APDUCommand, APDUResponse, APDUTransport, TCPTransport, DataPacker |
 | `javacard-rpc-server-javacard` | relux-works/javacard-rpc-server-javacard | Java Card base: AppletBase with APDU dispatch + type helpers |
 
 ## CLI Reference

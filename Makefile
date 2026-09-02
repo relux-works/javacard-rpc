@@ -10,7 +10,7 @@
 #   run-example     Build and run the Swift E2E CLI
 #   run-kotlin-example Build and run the Kotlin/JVM E2E CLI
 #   test-cap        Convert a generated stream applet to a verified CAP
-#   release-check   Run the full test suite and required CAP conversion gate
+#   release-check   Run the full test suite and required Kotlin/CAP gates
 #   e2e             Full one-shot pipeline: generate → build → bridge → run Swift + Kotlin E2E
 #   clean           Remove build artifacts
 
@@ -21,7 +21,7 @@ CLI_DIR       := $(EXAMPLE_DIR)/cli
 KOTLIN_CLI_DIR := $(EXAMPLE_DIR)/kotlin-cli
 GEN_DIR       := $(EXAMPLE_DIR)/generated
 
-.PHONY: build-codegen generate build-bridge build-applet build-cli build-kotlin-cli test-applet test-cap release-check run-bridge run-example run-kotlin-example e2e clean
+.PHONY: build-codegen generate build-bridge build-applet build-cli build-kotlin-cli test-applet test-kotlin-contract test-cap release-check run-bridge run-example run-kotlin-example e2e clean
 
 # --- Build ---
 
@@ -70,13 +70,17 @@ test-codegen:
 
 test: test-codegen test-applet
 
+test-kotlin-contract:
+	@command -v gradle >/dev/null 2>&1 || { echo "gradle is required" >&2; exit 2; }
+	cd $(CODEGEN_DIR) && go test . -run '^TestGeneratedKotlinStreamClientHarness$$' -count=1 -v
+
 test-cap:
 	@test -n "$(JCRPC_ANT_JAVACARD_JAR)" || { echo "JCRPC_ANT_JAVACARD_JAR is required" >&2; exit 2; }
 	@test -n "$(JCRPC_JCKIT_DIR)" || { echo "JCRPC_JCKIT_DIR is required" >&2; exit 2; }
 	@command -v ant >/dev/null 2>&1 || { echo "ant is required" >&2; exit 2; }
 	cd $(CODEGEN_DIR) && go test . -run TestGeneratedJavaStreamPackageConvertsToCAP -count=1 -v
 
-release-check: test test-cap
+release-check: test test-kotlin-contract test-cap
 
 # --- Clean ---
 

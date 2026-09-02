@@ -172,6 +172,36 @@ func TestGenerateJavaUsesOneStreamSessionForAllStreamMethods(t *testing.T) {
 	}
 }
 
+func TestGenerateJavaStreamPassesExactShortResponseLength(t *testing.T) {
+	s, err := ParseFile(filepath.Join("testdata", "stream.toml"))
+	if err != nil {
+		t.Fatalf("ParseFile returned error: %v", err)
+	}
+	s.Methods["signTranscript"] = &Method{
+		Name: "signTranscript",
+		INS:  0x40,
+		Request: &Message{Fields: []Field{{
+			Name: "transcript", Type: FieldTypeStream, MaxLength: 2048, ChunkSize: 192,
+		}}},
+		Response: &Message{Fields: []Field{
+			{Name: "signatureLength", Type: FieldTypeU8},
+			{Name: "signatureDerPadded", Type: FieldTypeBytesFixed, FixedLength: 72},
+		}},
+	}
+	if errs := Validate(s); len(errs) != 0 {
+		t.Fatalf("Validate returned errors: %v", errs)
+	}
+	result, err := GenerateJavaSkeleton(s, "io.jcrpc.streamdemo.server")
+	if err != nil {
+		t.Fatalf("GenerateJavaSkeleton returned error: %v", err)
+	}
+	skeleton := string(result.SkeletonSource)
+	fragment := "false, (short) 0, (short) 0, (short) 73, this,"
+	if count := strings.Count(skeleton, fragment); count != 6 {
+		t.Fatalf("fixed short response length must reach all six stream operations; got %d occurrences of %q:\n%s", count, fragment, skeleton)
+	}
+}
+
 func TestGenerateJavaNonStreamSchemaHasNoStreamSupportFiles(t *testing.T) {
 	s, err := ParseFile(filepath.Join("testdata", "counter.toml"))
 	if err != nil {

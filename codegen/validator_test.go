@@ -206,6 +206,47 @@ fields = [{ name = "packet", type = "stream", max_length = 1024, chunk_size = 4 
 	requireValidationError(t, errs, "methods.process.request.fields[0].max_length", "at most 255")
 }
 
+func TestValidateRejectsStreamMethodFixedShortResponseAbove255Bytes(t *testing.T) {
+	s := mustParseSchema(t, `
+[applet]
+name = "Demo"
+version = "1.0.0"
+aid = "A000000001"
+cla = 0x80
+
+[methods.sign]
+ins = 0x20
+[methods.sign.request]
+fields = [{ name = "packet", type = "stream", max_length = 1024, chunk_size = 192 }]
+[methods.sign.response]
+fields = [{ name = "signature", type = "bytes[256]" }]
+`)
+
+	errs := Validate(s)
+	requireValidationError(t, errs, "methods.sign.response.fields", "fit in 255 bytes")
+}
+
+func TestValidateAcceptsStreamMethodFixedShortResponseAt255Bytes(t *testing.T) {
+	s := mustParseSchema(t, `
+[applet]
+name = "Demo"
+version = "1.0.0"
+aid = "A000000001"
+cla = 0x80
+
+[methods.sign]
+ins = 0x20
+[methods.sign.request]
+fields = [{ name = "packet", type = "stream", max_length = 1024, chunk_size = 192 }]
+[methods.sign.response]
+fields = [{ name = "signature", type = "bytes[255]" }]
+`)
+
+	if errs := Validate(s); len(errs) != 0 {
+		t.Fatalf("255-byte fixed short response must be accepted, got %v", errs)
+	}
+}
+
 func TestValidateRejectsMixedStreamMessage(t *testing.T) {
 	s := mustParseSchema(t, `
 [applet]

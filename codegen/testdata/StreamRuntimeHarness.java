@@ -17,6 +17,7 @@ public final class StreamRuntimeHarness {
         testHandlerStatusFailureWipesWorkspace();
         testNegativeHandlerLengthFailsClosed();
         testShortResponseCloseIsExactlyOnce();
+        testExactShortResponseLength();
         testExplicitAbortWipesWorkspace();
     }
 
@@ -196,6 +197,38 @@ public final class StreamRuntimeHarness {
         require(allZero(fixture.digest), "negative handler length must wipe digest scratch");
     }
 
+    private static void testExactShortResponseLength() throws Exception {
+        for (int produced : new int[]{72, 74}) {
+            Fixture fixture = new Fixture();
+            StreamDemoStreamEndpoint.Handler handler = (methodId, input, inputOffset, inputLength,
+                    output, outputOffset, outputCapacity) -> {
+                require((outputCapacity & 0xFFFF) == 73, "exact output capacity");
+                return (short) produced;
+            };
+            Session session = fixture.session((byte) 1, true, false, (short) 73, handler);
+            byte[] input = new byte[]{1};
+            byte[] response = new byte[255];
+            send(session, 0, 0, 1, input, response);
+            expectStatus(0x6700,
+                    () -> send(session, 1, 0, 0, closeData(input), response));
+            require(allZero(fixture.workspace), "wrong exact length must wipe workspace");
+        }
+
+        Fixture fixture = new Fixture();
+        StreamDemoStreamEndpoint.Handler handler = (methodId, input, inputOffset, inputLength,
+                output, outputOffset, outputCapacity) -> {
+            require((outputCapacity & 0xFFFF) == 73, "exact output capacity");
+            Arrays.fill(output, outputOffset, outputOffset + 73, (byte) 0x5A);
+            return (short) 73;
+        };
+        Session session = fixture.session((byte) 1, true, false, (short) 73, handler);
+        byte[] input = new byte[]{1};
+        byte[] response = new byte[255];
+        send(session, 0, 0, 1, input, response);
+        require(send(session, 1, 0, 0, closeData(input), response) == 73,
+                "exact short response length");
+    }
+
     private static void testExplicitAbortWipesWorkspace() {
         Fixture fixture = new Fixture();
         Session session = fixture.session((byte) 1, true, true, new CountingReverseHandler());
@@ -281,7 +314,14 @@ public final class StreamRuntimeHarness {
 
         Session session(byte methodId, boolean request, boolean response,
                         StreamDemoStreamEndpoint.Handler handler) {
-            return new Session(runtime, methodId, request, response, handler);
+            return session(methodId, request, response, (short) -1, handler);
+        }
+
+        Session session(byte methodId, boolean request, boolean response,
+                        short exactShortResponseLength,
+                        StreamDemoStreamEndpoint.Handler handler) {
+            return new Session(runtime, methodId, request, response,
+                    exactShortResponseLength, handler);
         }
     }
 
@@ -290,14 +330,17 @@ public final class StreamRuntimeHarness {
         private final byte methodId;
         private final boolean request;
         private final boolean response;
+        private final short exactShortResponseLength;
         private final StreamDemoStreamEndpoint.Handler handler;
 
         Session(StreamDemoBoundedStreamRuntime runtime, byte methodId, boolean request,
-                boolean response, StreamDemoStreamEndpoint.Handler handler) {
+                boolean response, short exactShortResponseLength,
+                StreamDemoStreamEndpoint.Handler handler) {
             this.runtime = runtime;
             this.methodId = methodId;
             this.request = request;
             this.response = response;
+            this.exactShortResponseLength = exactShortResponseLength;
             this.handler = handler;
         }
 
@@ -306,6 +349,7 @@ public final class StreamRuntimeHarness {
             return runtime.dispatch(methodId, operation,
                     request, (short) 1792, (short) 192,
                     response, (short) 1792, (short) 192,
+                    exactShortResponseLength,
                     handler, p1, p2, input, inputOffset, inputLength,
                     output, outputOffset, outputCapacity);
         }

@@ -230,20 +230,21 @@ type javaTemplateData struct {
 }
 
 type javaMethodRender struct {
-	Name           string
-	INS            byte
-	INSConstName   string
-	HandlerName    string
-	AbstractName   string
-	Signature      string
-	HasHandler     bool
-	HandlerLines   []string
-	AbstractReturn string
-	AbstractParams []string
-	ResponseKind   responseKind
-	IsStream       bool
-	RequestStream  *Field
-	ResponseStream *Field
+	Name                     string
+	INS                      byte
+	INSConstName             string
+	HandlerName              string
+	AbstractName             string
+	Signature                string
+	HasHandler               bool
+	HandlerLines             []string
+	AbstractReturn           string
+	AbstractParams           []string
+	ResponseKind             responseKind
+	IsStream                 bool
+	RequestStream            *Field
+	ResponseStream           *Field
+	ExactShortResponseLength int
 }
 
 type requestHandling struct {
@@ -397,6 +398,12 @@ func renderMethod(name string, m *Method) (javaMethodRender, error) {
 		mr.IsStream = true
 		mr.RequestStream = m.Request.StreamField()
 		mr.ResponseStream = m.Response.StreamField()
+		mr.ExactShortResponseLength = -1
+		if mr.ResponseStream == nil {
+			if length, fixed := fixedMessageLength(responseFields(m.Response)); fixed {
+				mr.ExactShortResponseLength = length
+			}
+		}
 		return mr, nil
 	}
 
@@ -514,11 +521,16 @@ func renderMethod(name string, m *Method) (javaMethodRender, error) {
 		mr.AbstractParams = request.ParamDecls
 		mr.HasHandler = true
 		call := fmt.Sprintf("%s(%s)", mr.AbstractName, strings.Join(request.ArgExprs, ", "))
-		mr.HandlerLines = appendHandlerBody(
-			request,
-			fmt.Sprintf("byte[] out = %s;", call),
-			"return safeBytes(out);",
-		)
+		lines := []string{fmt.Sprintf("byte[] out = safeBytes(%s);", call)}
+		if fixedLength, fixed := fixedMessageLength(responseFields); fixed {
+			lines = append(lines,
+				fmt.Sprintf("if (out.length != %d) {", fixedLength),
+				"    throw new StatusWordException(SW_WRONG_LENGTH);",
+				"}",
+			)
+		}
+		lines = append(lines, "return out;")
+		mr.HandlerLines = appendHandlerBody(request, lines...)
 		mr.ResponseKind = responseKindPacked
 		return mr, nil
 	}

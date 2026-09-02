@@ -38,22 +38,15 @@ func GenerateKotlinClient(s *Schema, packageName string) ([]byte, error) {
 
 const kotlinClientTemplate = `package {{.PackageName}}
 
+import io.jcrpc.client.APDUCommand
+import io.jcrpc.client.APDUResponse
+import io.jcrpc.client.APDUTransport
 import java.io.ByteArrayOutputStream
 {{.StreamImportBlock}}
 
 public interface {{.ProtocolName}} {
     suspend fun select()
 {{.ProtocolMethodsBlock}}}
-
-public data class {{.TransportResultName}}(
-    val sw: UShort,
-    val data: ByteArray,
-)
-
-public interface {{.TransportName}} {
-    suspend fun transmit(cla: UByte, ins: UByte, p1: UByte, p2: UByte, data: ByteArray?): {{.TransportResultName}}
-{{.StreamTransportBlock}}
-}
 
 public sealed class {{.ClientExceptionName}}(message: String) : Exception(message) {
     public class StatusWord(public val sw: UShort) :
@@ -64,7 +57,7 @@ public sealed class {{.ClientExceptionName}}(message: String) : Exception(messag
 }
 
 public class {{.ClientName}}(
-    private val transport: {{.TransportName}},
+    private val transport: APDUTransport,
 ) : {{.ProtocolName}} {
 {{.StreamOwnedFieldsBlock}}
 
@@ -74,12 +67,20 @@ public class {{.ClientName}}(
     }
 
     override suspend fun select() {
-        val response = transport.transmit(cla = 0x00u, ins = 0xA4u, p1 = 0x04u, p2 = 0x00u, data = aid)
+        val response = transmit(cla = 0x00u, ins = 0xA4u, p1 = 0x04u, p2 = 0x00u, data = aid)
         checkStatusWord(response.sw)
     }
 
 {{.MethodsBlock}}
 {{.StreamHelpersBlock}}
+    private suspend fun transmit(
+        cla: UByte,
+        ins: UByte,
+        p1: UByte,
+        p2: UByte,
+        data: ByteArray?,
+    ): APDUResponse = transport.transmit(APDUCommand(cla, ins, p1, p2, data))
+
     private fun checkStatusWord(sw: UShort) {
         if (sw != 0x9000u.toUShort()) {
             throw {{.ClientExceptionName}}.StatusWord(sw)
@@ -170,8 +171,6 @@ type kotlinClientTemplateData struct {
 	PackageName            string
 	ClientName             string
 	ProtocolName           string
-	TransportName          string
-	TransportResultName    string
 	ClientExceptionName    string
 	AIDLiteral             string
 	CLAHex                 string
@@ -179,7 +178,6 @@ type kotlinClientTemplateData struct {
 	MethodsBlock           string
 	StreamImportBlock      string
 	StreamHelpersBlock     string
-	StreamTransportBlock   string
 	StreamExceptionBlock   string
 	StreamOwnedFieldsBlock string
 	ResponseStructsBlock   string
@@ -211,8 +209,6 @@ type kotlinParam struct {
 func buildKotlinClientTemplateData(s *Schema, packageName string) (*kotlinClientTemplateData, error) {
 	appletName := swiftTypeName(s.Applet.Name)
 	clientName := appletName + "Client"
-	transportName := appletName + "Transport"
-	transportResultName := appletName + "TransportResult"
 	clientExceptionName := appletName + "ClientException"
 	protocolName := clientName + "Protocol"
 
@@ -230,16 +226,13 @@ func buildKotlinClientTemplateData(s *Schema, packageName string) (*kotlinClient
 		PackageName:            packageName,
 		ClientName:             clientName,
 		ProtocolName:           protocolName,
-		TransportName:          transportName,
-		TransportResultName:    transportResultName,
 		ClientExceptionName:    clientExceptionName,
 		AIDLiteral:             formatKotlinByteArrayLiteral(aidBytes),
 		CLAHex:                 fmt.Sprintf("0x%02X", s.Applet.CLA),
 		ProtocolMethodsBlock:   buildKotlinProtocolMethodsBlock(methods),
 		MethodsBlock:           renderKotlinMethodsBlock(methods),
 		StreamImportBlock:      renderKotlinStreamImportBlock(hasStreams),
-		StreamHelpersBlock:     renderKotlinStreamHelpersBlock(hasStreams, transportResultName),
-		StreamTransportBlock:   renderKotlinStreamTransportBlock(hasStreams),
+		StreamHelpersBlock:     renderKotlinStreamHelpersBlock(hasStreams),
 		StreamExceptionBlock:   renderKotlinStreamExceptionBlock(hasStreams, clientExceptionName),
 		StreamOwnedFieldsBlock: renderKotlinStreamOwnedFieldsBlock(hasStreams),
 		ResponseStructsBlock:   renderKotlinResponseStructsBlock(structs),
@@ -453,7 +446,7 @@ func buildKotlinRequestSpec(methodName string, req *Message) (
 
 func buildKotlinResponseSpec(appletName, methodName string, resp *Message) (string, []string, *kotlinResponseStructData, error) {
 	if resp == nil || len(resp.Fields) == 0 {
-		return "", nil, nil, nil
+		return "", []string{"if (response.data.isNotEmpty()) invalidResponse()"}, nil, nil
 	}
 
 	if len(resp.Fields) == 1 {
@@ -466,7 +459,11 @@ func buildKotlinResponseSpec(appletName, methodName string, resp *Message) (stri
 		if err != nil {
 			return "", nil, nil, fmt.Errorf("method %q response field %q: %w", methodName, field.Name, err)
 		}
-		return typ, []string{line}, nil, nil
+		lines := []string{line}
+		if fixedLength, fixed := fixedMessageLength(resp.Fields); fixed {
+			lines = append([]string{fmt.Sprintf("if (response.data.size != %d) invalidResponse()", fixedLength)}, lines...)
+		}
+		return typ, lines, nil, nil
 	}
 
 	structName := responseStructName(appletName, methodName)
@@ -476,7 +473,11 @@ func buildKotlinResponseSpec(appletName, methodName string, resp *Message) (stri
 	}
 
 	offset := 0
-	returnLines := []string{fmt.Sprintf("return %s(", structName)}
+	returnLines := make([]string, 0, len(resp.Fields)+3)
+	if fixedLength, fixed := fixedMessageLength(resp.Fields); fixed {
+		returnLines = append(returnLines, fmt.Sprintf("if (response.data.size != %d) invalidResponse()", fixedLength))
+	}
+	returnLines = append(returnLines, fmt.Sprintf("return %s(", structName))
 	for i, field := range resp.Fields {
 		typ, err := kotlinFieldType(field.Type)
 		if err != nil {
@@ -499,6 +500,33 @@ func buildKotlinResponseSpec(appletName, methodName string, resp *Message) (stri
 	returnLines = append(returnLines, ")")
 
 	return structName, returnLines, structData, nil
+}
+
+func fixedMessageLength(fields []Field) (int, bool) {
+	total := 0
+	for _, field := range fields {
+		switch field.Type {
+		case FieldTypeU8, FieldTypeBool:
+			total++
+		case FieldTypeU16:
+			total += 2
+		case FieldTypeU32:
+			total += 4
+		case FieldTypeBytesFixed:
+			if field.FixedLength <= 0 {
+				return 0, false
+			}
+			total += field.FixedLength
+		case FieldTypeASCII, FieldTypeBytes:
+			if field.Length == nil || *field.Length <= 0 {
+				return 0, false
+			}
+			total += *field.Length
+		default:
+			return 0, false
+		}
+	}
+	return total, true
 }
 
 func kotlinResponseReadLine(field Field, offset int, isLast bool, singleField bool) (string, int, error) {
@@ -562,7 +590,7 @@ func buildKotlinTransmitLine(ins byte, p1Expr, p2Expr, dataExpr string, hasData 
 		dataArg = dataExpr
 	}
 	return fmt.Sprintf(
-		"val response = transport.transmit(cla = CLA, ins = 0x%02Xu, p1 = %s, p2 = %s, data = %s)",
+		"val response = transmit(cla = CLA, ins = 0x%02Xu, p1 = %s, p2 = %s, data = %s)",
 		ins,
 		p1Expr,
 		p2Expr,
@@ -710,6 +738,7 @@ kotlin {
 }
 
 dependencies {
+    implementation("io.jcrpc:javacard-rpc-client-kotlin:0.2.0")
     testImplementation(kotlin("test"))
 }
 
@@ -735,6 +764,12 @@ dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
         mavenCentral()
+    }
+}
+
+sourceControl {
+    gitRepository(uri("https://github.com/relux-works/javacard-rpc-client-kotlin.git")) {
+        producesModule("io.jcrpc:javacard-rpc-client-kotlin")
     }
 }
 

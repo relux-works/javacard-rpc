@@ -4,31 +4,12 @@ import counter.CounterAppletInfo
 import counter.CounterClient
 import counter.CounterClientException
 import counter.CounterInfo
-import counter.CounterTransport
-import counter.CounterTransportResult
-import io.jcrpc.client.APDUCommand
-import io.jcrpc.client.APDUTransport
 import io.jcrpc.client.TCPTransport
 import kotlinx.coroutines.runBlocking
 import kotlin.system.exitProcess
 
 private const val DISPLAY_NAME = "\u041F\u0440\u0438\u0432\u0435\u0442, BSim"
 private const val ROUNDTRIP_MESSAGE = "\u041F\u0440\u0438\u0432\u0435\u0442, BSim \uD83D\uDE80"
-
-private class CounterBridgeTransport(
-    private val transport: APDUTransport,
-) : CounterTransport {
-    override suspend fun transmit(
-        cla: UByte,
-        ins: UByte,
-        p1: UByte,
-        p2: UByte,
-        data: ByteArray?,
-    ): CounterTransportResult {
-        val response = transport.transmit(APDUCommand(cla = cla, ins = ins, p1 = p1, p2 = p2, data = data))
-        return CounterTransportResult(sw = response.sw, data = response.data)
-    }
-}
 
 fun main(): Unit = runBlocking {
     val tcpTransport = TCPTransport(host = "127.0.0.1", port = 9025)
@@ -45,7 +26,7 @@ fun main(): Unit = runBlocking {
         exitProcess(1)
     }
 
-    val counter = CounterClient(transport = CounterBridgeTransport(tcpTransport))
+    val counter = CounterClient(transport = tcpTransport)
     var passed = 0
     var failed = 0
 

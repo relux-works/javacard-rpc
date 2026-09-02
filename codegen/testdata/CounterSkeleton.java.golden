@@ -125,8 +125,11 @@ public abstract class CounterSkeleton {
     }
 
     private byte[] handleGetInfo(byte p1, byte p2, byte[] requestData) {
-        byte[] out = onGetInfo();
-        return safeBytes(out);
+        byte[] out = safeBytes(onGetInfo());
+        if (out.length != 5) {
+            throw new StatusWordException(SW_WRONG_LENGTH);
+        }
+        return out;
     }
 
     private byte[] handleStore(byte p1, byte p2, byte[] requestData) {

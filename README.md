@@ -88,7 +88,7 @@ manager and one transient workspace. This serializes large operations, prevents
 cross-method state corruption, and keeps reset/deselect cleanup inside generated
 code. The generated Java adapter consumes fragmented incoming APDU data before
 dispatch. On the host, any failed or cancelled stream operation performs a
-best-effort abort and then calls `invalidateStreamSession()` on the transport.
+best-effort abort and then calls `invalidateSession()` on the shared transport.
 An exception thrown during either cleanup step is ignored so it cannot replace
 the authoritative protocol failure or coroutine cancellation.
 The generated client also rejects a concurrent streamed call locally with
@@ -154,10 +154,13 @@ let counter = CounterClient(transport: transport)
 let value = try await counter.increment(amount: 5)
 ```
 
-Kotlin/JVM follows the same DI pattern through generated `CounterTransport` plus the standalone runtime package `javacard-rpc-client-kotlin`.
+Kotlin/JVM generated clients accept the shared `APDUTransport` from the
+standalone `javacard-rpc-client-kotlin` runtime directly. The generated module
+depends on runtime version `0.2.0`; no applet-specific transport bridge is
+generated or required.
 
-For a stream-capable Kotlin transport, also implement
-`invalidateStreamSession()`. It must synchronously make the selected applet
+For a stream-capable Kotlin transport, implement `invalidateSession()`. It must
+synchronously make the selected applet
 session unusable, normally by closing the logical channel; the next operation
 then starts from a fresh select. The generated client invokes it after every
 non-terminal failure, including coroutine cancellation.
@@ -212,6 +215,7 @@ make e2e
 | Build Swift E2E CLI | `make build-cli` |
 | Build Kotlin E2E CLI | `make build-kotlin-cli` |
 | Run codegen tests | `make test-codegen` |
+| Run the mandatory generated Kotlin transport/lifecycle harness | `make test-kotlin-contract` |
 | Convert generated stream applet to CAP | `JCRPC_ANT_JAVACARD_JAR=... JCRPC_JCKIT_DIR=... make test-cap` |
 | Run release validation including CAP conversion | `JCRPC_ANT_JAVACARD_JAR=... JCRPC_JCKIT_DIR=... make release-check` |
 | Full E2E pipeline | `make e2e` |
@@ -221,7 +225,7 @@ make e2e
 | Tool | Purpose | Command | Output |
 | --- | --- | --- | --- |
 | Go | Build codegen and run parser, generator, JVM harness, and CLI tests | `cd codegen && go test ./...` | Go test cache; task-local smoke files use `.temp/` |
-| Gradle | Compile generated Java/Kotlin packages and run Kotlin/JVM integration tests | `gradle -p <generated-package> build` | Package-local `build/` |
+| Gradle | Compile generated Java/Kotlin packages and run the mandatory Kotlin/JVM transport/lifecycle harness | `make test-kotlin-contract`; `gradle -p <generated-package> build` | Go-managed temporary harness or package-local `build/` |
 | `javac` / `java` | Compile and execute generated Java runtime and fragmented-APDU harnesses | Run through `go test ./...` | Go-managed temporary directories |
 | Ant + ant-javacard | Convert the generated Java stream applet to a verified CAP | `JCRPC_ANT_JAVACARD_JAR=... JCRPC_JCKIT_DIR=... make test-cap` | Go-managed temporary CAP |
 | Make | Stable project entry points and release gate | `make generate`, `make test-codegen`, `make test-applet`, `make test-cap`, `make release-check`, `make e2e` | Generated examples under `examples/counter/generated/`; build products remain local |

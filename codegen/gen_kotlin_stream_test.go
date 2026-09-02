@@ -4,8 +4,25 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestRequiredKotlinContractTargetFailsWhenGradleIsUnavailable(t *testing.T) {
+	makePath, err := exec.LookPath("make")
+	if err != nil {
+		t.Skip("make is not available")
+	}
+	command := exec.Command(makePath, "-f", filepath.Join("..", "Makefile"), "test-kotlin-contract")
+	command.Env = append(os.Environ(), "PATH="+t.TempDir())
+	output, err := command.CombinedOutput()
+	if err == nil {
+		t.Fatalf("required Kotlin target unexpectedly passed without Gradle:\n%s", output)
+	}
+	if !strings.Contains(string(output), "gradle is required") {
+		t.Fatalf("required Kotlin target failed for the wrong reason: %v\n%s", err, output)
+	}
+}
 
 func TestGeneratedKotlinStreamClientHarness(t *testing.T) {
 	gradle, err := exec.LookPath("gradle")
@@ -34,6 +51,15 @@ func TestGeneratedKotlinStreamClientHarness(t *testing.T) {
 		Response: &Message{Fields: []Field{{
 			Name: "packet", Type: FieldTypeStream, MaxLength: 2048, ChunkSize: 224,
 		}}},
+	}
+	s.Methods["getFixedInfo"] = &Method{
+		Name: "getFixedInfo",
+		INS:  0x02,
+		Response: &Message{Fields: []Field{
+			{Name: "schema", Type: FieldTypeU8},
+			{Name: "identity", Type: FieldTypeBytesFixed, FixedLength: 10},
+			{Name: "generation", Type: FieldTypeU32},
+		}},
 	}
 	source, err := GenerateKotlinClient(s, "io.jcrpc.streamdemo.client")
 	if err != nil {
@@ -66,7 +92,19 @@ func TestGeneratedKotlinStreamClientHarness(t *testing.T) {
 	}
 	writeTestFile(t, filepath.Join(testDir, "StreamClientHarness.kt"), harness)
 	writeTestFile(t, filepath.Join(root, "build.gradle.kts"), []byte(GenerateKotlinBuildGradle("streamdemo", "io.jcrpc.streamdemo.client", "1.0.0")))
-	writeTestFile(t, filepath.Join(root, "settings.gradle.kts"), []byte(GenerateKotlinSettingsGradle("streamdemo")))
+	runtimeFixture, err := filepath.Abs(filepath.Join("testdata", "kotlin-runtime"))
+	if err != nil {
+		t.Fatalf("resolve Kotlin runtime fixture: %v", err)
+	}
+	settings := GenerateKotlinSettingsGradle("streamdemo") + `
+
+includeBuild("` + filepath.ToSlash(runtimeFixture) + `") {
+    dependencySubstitution {
+        substitute(module("io.jcrpc:javacard-rpc-client-kotlin")).using(project(":"))
+    }
+}
+`
+	writeTestFile(t, filepath.Join(root, "settings.gradle.kts"), []byte(settings))
 
 	cmd := exec.Command(gradle, "test", "--no-daemon", "-q")
 	cmd.Dir = root

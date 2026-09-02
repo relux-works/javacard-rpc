@@ -171,7 +171,7 @@ prepared descriptor through `+2`, so the typed handler is not executed again.
 A repeated response-only `+0` while that descriptor remains pending fails with
 the wrong-state status and does not clear or replace the pending result.
 Any remaining host failure triggers a best-effort `+5` abort. The generated
-client then synchronously calls `transport.invalidateStreamSession()` so the
+client then synchronously calls the shared `APDUTransport.invalidateSession()` so the
 transport can close its logical channel or otherwise require a fresh select.
 This invalidation still runs when coroutine cancellation prevents the suspend
 abort from reaching the card. Cleanup is best effort: an abort or invalidation
@@ -189,6 +189,11 @@ dispatcher, and sends the result from preallocated transient storage. The
 developer implements only typed `(buffer, offset, length, output, capacity)`
 handlers and calls the generated `failStream(statusWord)` helper for a business
 failure; the developer does not implement a session state machine.
+For a streamed method with an ordinary fixed-width response, the dispatcher
+passes the exact declared width as the handler's output capacity and rejects a
+returned length that differs. Every ordinary response of a streamed method must
+fit the 255-byte short-response ceiling. A variable ordinary response receives
+that full capacity; a fixed response may declare at most 255 bytes.
 
 The concrete `Applet` owns only lifecycle wiring: it constructs one generated
 APDU adapter, calls `processIfStream(apdu)` before ordinary dispatch, and
@@ -240,6 +245,17 @@ the remaining APDU data. A `stream` carries one bounded opaque byte array over
 several APDUs; serialization inside that byte array belongs to the application
 contract, not to the stream transport.
 
+When every ordinary response field has a fixed width, that width is exact.
+Generated Kotlin decoding rejects both shorter and longer response data, and
+generated Java dispatch rejects an implementation result whose encoded length
+does not equal the declared total. A variable final field is the only ordinary
+response form that may consume an otherwise unconstrained suffix.
+
+Generated Kotlin modules depend on
+`io.jcrpc:javacard-rpc-client-kotlin:0.2.0`. Their clients accept the runtime's
+shared `APDUTransport` directly; the generator does not declare a schema-local
+transport interface or result wrapper.
+
 ## 7. `[status_words]` Section (Optional)
 
 `[status_words]` maps symbolic names to APDU status word codes.
@@ -279,7 +295,7 @@ The following semantic checks are enforced:
 12. `location` must be one of `p1`, `p2`, `data` when present.
 13. `p1`/`p2` fields must be `u8` or `bool`.
 14. Duplicate `p1` or duplicate `p2` fields are invalid.
-15. A stream field requires `max_length` and `chunk_size`, must fit in at most 255 chunks, cannot occupy `p1`/`p2`, and must be the only field in that message; the containing method cannot assign ordinary request fields to `p1`/`p2` either.
+15. A stream field requires `max_length` and `chunk_size`, must fit in at most 255 chunks, cannot occupy `p1`/`p2`, and must be the only field in that message; the containing method cannot assign ordinary request fields to `p1`/`p2` either. If that method returns an ordinary fixed-width response, its complete declared width must fit the 255-byte short-response ceiling.
 16. Status word names must be valid identifiers.
 17. Status word codes must be unique.
 18. Status word code must be in `0x6000..0x6FFF` or `0x9000..0x9FFF`.

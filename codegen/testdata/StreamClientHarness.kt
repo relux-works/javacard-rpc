@@ -1,5 +1,8 @@
 package io.jcrpc.streamdemo.client
 
+import io.jcrpc.client.APDUCommand
+import io.jcrpc.client.APDUResponse
+import io.jcrpc.client.APDUTransport
 import io.jcrpc.streamdemo.server.StreamDemoBoundedStreamRuntime
 import io.jcrpc.streamdemo.server.StreamDemoStreamEndpoint
 import java.security.MessageDigest
@@ -26,7 +29,9 @@ private class RuntimeBackedTransport(
     private val cancelAfterINS: Int? = null,
     private val suspendAfterINS: Int? = null,
     private val throwOnInvalidate: Boolean = false,
-) : StreamDemoTransport {
+    private val ordinaryResponseData: ByteArray = byteArrayOf(0x07),
+    private val fixedResponseData: ByteArray = byteArrayOf(0x01) + ByteArray(10) { it.toByte() } + byteArrayOf(0, 0, 0, 2),
+) : APDUTransport {
     private val workspace = ByteArray(2048)
     private val digestScratch = ByteArray(32)
     private val resetMarker = ByteArray(1)
@@ -36,8 +41,8 @@ private class RuntimeBackedTransport(
     private var closeReadResponseLost = false
     private var cancellationDelivered = false
     private var suspensionDelivered = false
-    private var pendingContinuation: Continuation<StreamDemoTransportResult>? = null
-    private var pendingResponse: StreamDemoTransportResult? = null
+    private var pendingContinuation: Continuation<APDUResponse>? = null
+    private var pendingResponse: APDUResponse? = null
 
     var handlerExecutions: Int = 0
         private set
@@ -82,14 +87,19 @@ private class RuntimeBackedTransport(
         sha256,
     )
 
-    override suspend fun transmit(
-        cla: UByte,
-        ins: UByte,
-        p1: UByte,
-        p2: UByte,
-        data: ByteArray?,
-    ): StreamDemoTransportResult {
+    override suspend fun transmit(command: APDUCommand): APDUResponse {
+        val cla = command.cla
+        val ins = command.ins
+        val p1 = command.p1
+        val p2 = command.p2
+        val data = command.data
         assertEquals(0xB0u.toUByte(), cla)
+        if (ins.toInt() == 0x01) {
+            return response(0x9000u.toUShort(), ordinaryResponseData)
+        }
+        if (ins.toInt() == 0x02) {
+            return response(0x9000u.toUShort(), fixedResponseData)
+        }
         val operation = ins.toInt() - 0x20
         require(operation in 0..5) { "unexpected INS 0x%02X".format(ins.toInt()) }
         if (ins.toInt() == 0x20) writeChunkCalls++
@@ -110,6 +120,7 @@ private class RuntimeBackedTransport(
                 true,
                 1792.toShort(),
                 192.toShort(),
+                (-1).toShort(),
                 handler,
                 p1.toByte(),
                 p2.toByte(),
@@ -121,7 +132,7 @@ private class RuntimeBackedTransport(
                 response.size.toShort(),
             ).toInt() and 0xFFFF
         } catch (failure: StreamDemoStreamEndpoint.StreamStatusWordException) {
-            return StreamDemoTransportResult(failure.statusWord.toUShort(), byteArrayOf())
+            return response(failure.statusWord.toUShort(), byteArrayOf())
         }
 
         if (ins.toInt() == cancelAfterINS && !cancellationDelivered) {
@@ -150,7 +161,7 @@ private class RuntimeBackedTransport(
         if (corruptDescriptorDigest && (ins.toInt() == 0x21 || ins.toInt() == 0x22) && result.size == 35) {
             result[3] = (result[3].toInt() xor 0x01).toByte()
         }
-        val transportResult = StreamDemoTransportResult(0x9000u.toUShort(), result)
+        val transportResult = response(0x9000u.toUShort(), result)
         if (ins.toInt() == suspendAfterINS && !suspensionDelivered) {
             suspensionDelivered = true
             return suspendCoroutine { continuation ->
@@ -161,7 +172,7 @@ private class RuntimeBackedTransport(
         return transportResult
     }
 
-    override fun invalidateStreamSession() {
+    override fun invalidateSession() {
         invalidateCalls++
         if (throwOnInvalidate) throw IllegalStateException("invalidation failed")
         runtime.abort(StreamDemoStreamEndpoint.ABORT_HOST_FAILURE)
@@ -176,9 +187,51 @@ private class RuntimeBackedTransport(
         pendingResponse = null
         continuation.resume(response)
     }
+
+    private fun response(sw: UShort, data: ByteArray): APDUResponse = APDUResponse(
+        data + byteArrayOf(
+            ((sw.toInt() ushr 8) and 0xFF).toByte(),
+            (sw.toInt() and 0xFF).toByte(),
+        ),
+    )
 }
 
 class StreamClientHarness {
+    @Test
+    fun generatedClientRequiresTheExactFixedResponseLength() {
+        assertEquals(0x07u.toUByte(), runSuspend { StreamDemoClient(RuntimeBackedTransport()).getVersion() })
+
+        assertFailsWith<StreamDemoClientException.InvalidResponse> {
+            runSuspend {
+                StreamDemoClient(RuntimeBackedTransport(ordinaryResponseData = byteArrayOf())).getVersion()
+            }
+        }
+        assertFailsWith<StreamDemoClientException.InvalidResponse> {
+            runSuspend {
+                StreamDemoClient(RuntimeBackedTransport(ordinaryResponseData = byteArrayOf(0x07, 0x08))).getVersion()
+            }
+        }
+    }
+
+    @Test
+    fun generatedClientRequiresTheExactMultiFieldResponseLength() {
+        val exact = runSuspend { StreamDemoClient(RuntimeBackedTransport()).getFixedInfo() }
+        assertEquals(0x01u.toUByte(), exact.schema)
+        assertContentEquals(ByteArray(10) { it.toByte() }, exact.identity)
+        assertEquals(2u, exact.generation)
+
+        assertFailsWith<StreamDemoClientException.InvalidResponse> {
+            runSuspend {
+                StreamDemoClient(RuntimeBackedTransport(fixedResponseData = ByteArray(14))).getFixedInfo()
+            }
+        }
+        assertFailsWith<StreamDemoClientException.InvalidResponse> {
+            runSuspend {
+                StreamDemoClient(RuntimeBackedTransport(fixedResponseData = ByteArray(16))).getFixedInfo()
+            }
+        }
+    }
+
     @Test
     fun generatedClientAndRuntimeRecoverLostCloseResponsesWithoutRepeatingTheHandler() {
         val transport = RuntimeBackedTransport(
