@@ -165,6 +165,71 @@ session unusable, normally by closing the logical channel; the next operation
 then starts from a fresh select. The generated client invokes it after every
 non-terminal failure, including coroutine cancellation.
 
+## Bridge consumers: CardProvider SPI and card scope
+
+The bridge (`bridge/`, currently version `0.3.0`) exposes one consumer SPI so a host project
+can bring its own card without the bridge learning anything about it:
+
+```java
+package io.jcrpc.bridge.card;
+
+public interface CardProvider {
+    CardSimulator create();
+}
+```
+
+`create()` is the whole contract. Runtime choice (a custom `SimulatorRuntime`),
+GlobalPlatform secure-channel setup, applet install and issuer personalization
+all happen inside the provider; the bridge never sees an issuer key or authority.
+The provider class must be on the bridge classpath and have a public no-arg
+constructor.
+
+```bash
+java --add-modules java.smartcardio -cp bridge.jar:jcardsim.jar:my-provider.jar \
+    io.jcrpc.bridge.Main \
+    --card-provider com.example.MyKeyVaultProvider \
+    --card-scope shared \
+    --port 9025
+```
+
+Provider resolution order:
+
+| Situation | Provider used |
+| --- | --- |
+| `--card-provider <fqcn>` given | that class (explicit wins over ServiceLoader) |
+| no flag, exactly one `META-INF/services/io.jcrpc.bridge.card.CardProvider` registration | the registered class |
+| no flag, no registration | `DefaultCardProvider`: `new CardSimulator()` + install the `--config` applets in order with their install params (pre-SPI behaviour, byte-identical) |
+| no flag, several registrations | startup refusal `PROVIDER_AMBIGUOUS` |
+
+Card scope (`--card-scope`, default `connection`):
+
+| Scope | Cards | Lock | RESET frame |
+| --- | --- | --- | --- |
+| `connection` | `create()` per TCP connection; state never crosses connections | none needed | resets only that connection's card |
+| `shared` | one `create()` at server start; every connection talks to the same card | single lock around every APDU/RESET/ATR, so concurrent connections are serialized, never interleaved | resets the shared card for everyone: applet selection is cleared, persistent applet state survives |
+
+Under `shared` scope selection is card state: connection B inherits whatever
+connection A selected, and a client disconnect is *not* an implicit reset.
+The only way to reset the shared card is the explicit RESET frame (`0x02`),
+and it is visible to all connections. Wire protocol and clients are unchanged;
+the Kotlin/Swift transports need no update to use either scope.
+
+Startup refusals (exit code 2, `[bridge] startup refused: <REASON>: ...` on
+stderr, no port bound, never a hang):
+
+| Reason | Cause |
+| --- | --- |
+| `PROVIDER_NOT_FOUND` | `--card-provider` class not on the classpath |
+| `PROVIDER_NOT_A_CARD_PROVIDER` | class does not implement `CardProvider` |
+| `PROVIDER_NO_NOARG_CTOR` | no public no-arg constructor |
+| `PROVIDER_INSTANTIATION_FAILED` | constructor threw / abstract class / ServiceLoader error |
+| `PROVIDER_AMBIGUOUS` | more than one ServiceLoader registration and no `--card-provider` |
+| `CARD_CREATE_FAILED` | `create()` threw or returned null (validated once at start in both scopes) |
+| `INVALID_SCOPE` | `--card-scope` not `connection` or `shared` |
+
+Bridge tests: `cd bridge && ./gradlew test` (JUnit 5; covers default-provider
+byte-identity, both scopes over real TCP, and every refusal above).
+
 ## Project structure
 
 ```
@@ -200,6 +265,9 @@ Generated code depends on thin runtime libraries:
 # Codegen plus generated Java and Kotlin stream harnesses
 make test-codegen
 
+# Bridge: default provider byte-identity, card scopes over TCP, startup refusals
+make test-bridge
+
 # Full E2E (build everything + run Swift + Kotlin integration harnesses)
 make e2e
 ```
@@ -215,6 +283,7 @@ make e2e
 | Build Swift E2E CLI | `make build-cli` |
 | Build Kotlin E2E CLI | `make build-kotlin-cli` |
 | Run codegen tests | `make test-codegen` |
+| Run bridge tests (CardProvider SPI, card scopes, refusals) | `make test-bridge` |
 | Run the mandatory generated Kotlin transport/lifecycle harness | `make test-kotlin-contract` |
 | Convert generated stream applet to CAP | `JCRPC_ANT_JAVACARD_JAR=... JCRPC_JCKIT_DIR=... make test-cap` |
 | Run release validation including CAP conversion | `JCRPC_ANT_JAVACARD_JAR=... JCRPC_JCKIT_DIR=... make release-check` |
@@ -228,7 +297,7 @@ make e2e
 | Gradle | Compile generated Java/Kotlin packages and run the mandatory Kotlin/JVM transport/lifecycle harness | `make test-kotlin-contract`; `gradle -p <generated-package> build` | Go-managed temporary harness or package-local `build/` |
 | `javac` / `java` | Compile and execute generated Java runtime and fragmented-APDU harnesses | Run through `go test ./...` | Go-managed temporary directories |
 | Ant + ant-javacard | Convert the generated Java stream applet to a verified CAP | `JCRPC_ANT_JAVACARD_JAR=... JCRPC_JCKIT_DIR=... make test-cap` | Go-managed temporary CAP |
-| Make | Stable project entry points and release gate | `make generate`, `make test-codegen`, `make test-applet`, `make test-cap`, `make release-check`, `make e2e` | Generated examples under `examples/counter/generated/`; build products remain local |
+| Make | Stable project entry points and release gate | `make generate`, `make test-codegen`, `make test-bridge`, `make test-applet`, `make test-cap`, `make release-check`, `make e2e` | Generated examples under `examples/counter/generated/`; build products remain local |
 
 Go tests use their own temporary directories. Local task runs and generated
 smoke packages belong under `.temp/`. The generated Kotlin stream harness runs

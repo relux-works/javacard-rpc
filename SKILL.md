@@ -186,6 +186,28 @@ val client = CounterClient(transport = TCPTransport())
 | `javacard-rpc-client-kotlin` | relux-works/javacard-rpc-client-kotlin | Kotlin/JVM shared transport and lifecycle: APDUCommand, APDUResponse, APDUTransport, TCPTransport, DataPacker |
 | `javacard-rpc-server-javacard` | relux-works/javacard-rpc-server-javacard | Java Card base: AppletBase with APDU dispatch + type helpers |
 
+## Bridge Consumers (CardProvider SPI)
+
+The bridge (version `0.3.0`) only needs a `CardSimulator`; who builds it is pluggable:
+
+```java
+public interface io.jcrpc.bridge.card.CardProvider { CardSimulator create(); }
+```
+
+- `--card-provider <fqcn>`: public no-arg constructor, on the bridge classpath.
+  Without the flag a single ServiceLoader registration is used, else the
+  default provider (plain `CardSimulator` + `--config` applets, pre-SPI behaviour).
+- The provider owns runtime choice, GP secure channel, install and
+  personalization; the bridge never learns a key.
+- `--card-scope connection` (default): fresh `create()` per TCP connection.
+- `--card-scope shared`: one card at server start, every connection under one
+  lock; the RESET frame resets that shared card for all connections (selection
+  cleared, persistent state kept); disconnect is not a reset.
+- Missing class, non-provider class, no no-arg ctor, throwing ctor/`create()`,
+  or a bad scope: typed startup refusal, exit 2, nothing bound.
+- Wire protocol and Kotlin/Swift clients are untouched.
+- Verify with `make test-bridge`. Full table: README "Bridge consumers".
+
 ## CLI Reference
 
 ```

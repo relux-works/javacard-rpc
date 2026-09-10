@@ -40,3 +40,4 @@ agents/
 task-board.config.json
 .task-board/
 *.xcuserstate
+LOGBOOK.md

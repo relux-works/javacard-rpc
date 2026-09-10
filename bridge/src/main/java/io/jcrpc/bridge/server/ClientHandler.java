@@ -1,6 +1,5 @@
 package io.jcrpc.bridge.server;
 
-import io.jcrpc.bridge.config.AppletConfig;
 import io.jcrpc.bridge.protocol.FrameCodec;
 import io.jcrpc.bridge.protocol.MessageType;
 import io.jcrpc.bridge.session.SimulatorSession;
@@ -13,20 +12,22 @@ import java.io.IOException;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
-import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * Handles a single TCP client connection.
- * Runs in a dedicated thread. Creates a fresh SimulatorSession on connect.
+ * Runs in a dedicated thread. Obtains its SimulatorSession from the server's
+ * supplier on connect (fresh card under connection scope, the shared one
+ * under shared scope).
  */
 public final class ClientHandler implements Runnable {
     private final Socket socket;
-    private final List<AppletConfig> applets;
+    private final Supplier<SimulatorSession> sessions;
     private final int clientId;
 
-    public ClientHandler(Socket socket, List<AppletConfig> applets, int clientId) {
+    public ClientHandler(Socket socket, Supplier<SimulatorSession> sessions, int clientId) {
         this.socket = socket;
-        this.applets = applets;
+        this.sessions = sessions;
         this.clientId = clientId;
     }
 
@@ -38,7 +39,7 @@ public final class ClientHandler implements Runnable {
         try (DataInputStream in = new DataInputStream(new BufferedInputStream(socket.getInputStream()));
              DataOutputStream out = new DataOutputStream(new BufferedOutputStream(socket.getOutputStream()))) {
 
-            SimulatorSession session = new SimulatorSession(applets);
+            SimulatorSession session = sessions.get();
 
             while (!socket.isClosed()) {
                 byte[] frame = FrameCodec.readFrame(in);

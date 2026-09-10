@@ -6,6 +6,7 @@
 #   build-bridge    Build the jCardSim TCP bridge
 #   build-applet    Build the counter example applet
 #   test-applet     Run jCardSim-backed applet tests for the counter example
+#   test-bridge     Run the bridge tests (CardProvider SPI, card scopes, startup refusals)
 #   run-bridge      Start the bridge with counter applet loaded
 #   run-example     Build and run the Swift E2E CLI
 #   run-kotlin-example Build and run the Kotlin/JVM E2E CLI
@@ -21,7 +22,7 @@ CLI_DIR       := $(EXAMPLE_DIR)/cli
 KOTLIN_CLI_DIR := $(EXAMPLE_DIR)/kotlin-cli
 GEN_DIR       := $(EXAMPLE_DIR)/generated
 
-.PHONY: build-codegen generate build-bridge build-applet build-cli build-kotlin-cli test-applet test-kotlin-contract test-cap release-check run-bridge run-example run-kotlin-example e2e clean
+.PHONY: build-codegen generate build-bridge build-applet build-cli build-kotlin-cli test-applet test-bridge test-kotlin-contract test-cap release-check run-bridge run-example run-kotlin-example e2e clean
 
 # --- Build ---
 
@@ -47,6 +48,9 @@ build-kotlin-cli: generate
 test-applet:
 	cd $(EXAMPLE_DIR)/applet && ./gradlew test -q
 
+test-bridge:
+	cd bridge && ./gradlew test -q
+
 # --- Run ---
 
 run-bridge: build-bridge build-applet
@@ -68,7 +72,7 @@ e2e:
 test-codegen:
 	cd $(CODEGEN_DIR) && go test ./...
 
-test: test-codegen test-applet
+test: test-codegen test-bridge test-applet
 
 test-kotlin-contract:
 	@command -v gradle >/dev/null 2>&1 || { echo "gradle is required" >&2; exit 2; }
