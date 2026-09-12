@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"unicode"
 
@@ -30,6 +31,27 @@ type cliOptions struct {
 	validateOnly  bool
 	verbose       bool
 	help          bool
+
+	simulatorDependency string
+}
+
+// defaultSimulatorDependency is the Maven coordinate of the Java Card simulator
+// the generated stream server build compiles against when no override is given.
+const defaultSimulatorDependency = "com.klinec:jcardsim:3.0.5.9"
+
+// simulatorCoordinatePattern accepts a Gradle/Maven "group:artifact:version"
+// coordinate with exactly three non-empty segments made of characters that can
+// appear inside a single-quoted Gradle dependency string without escaping.
+var simulatorCoordinatePattern = regexp.MustCompile(`^[A-Za-z0-9_.\-]+:[A-Za-z0-9_.\-]+:[A-Za-z0-9_.\-+]+$`)
+
+// validateSimulatorDependency refuses coordinates that are not a plain
+// group:artifact:version triple so the value can be embedded verbatim into
+// the generated build.gradle.
+func validateSimulatorDependency(coordinate string) error {
+	if !simulatorCoordinatePattern.MatchString(coordinate) {
+		return fmt.Errorf("invalid --simulator-dependency %q: expected group:artifact:version (for example %s)", coordinate, defaultSimulatorDependency)
+	}
+	return nil
 }
 
 func main() {
@@ -50,6 +72,7 @@ func run(args []string, stderr io.Writer) int {
 	fs.BoolVar(&opts.verbose, "verbose", false, "")
 	fs.BoolVar(&opts.help, "help", false, "")
 	fs.BoolVar(&opts.help, "h", false, "")
+	fs.StringVar(&opts.simulatorDependency, "simulator-dependency", defaultSimulatorDependency, "")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -100,6 +123,12 @@ func run(args []string, stderr io.Writer) int {
 	if opts.validateOnly {
 		verbosef("validation successful")
 		return exitCodeSuccess
+	}
+
+	simulatorDependency := strings.TrimSpace(opts.simulatorDependency)
+	if err := validateSimulatorDependency(simulatorDependency); err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return exitCodeGeneration
 	}
 
 	javaPackage := strings.TrimSpace(opts.javaPackage)
@@ -163,7 +192,7 @@ func run(args []string, stderr io.Writer) int {
 
 		// write build.gradle
 		gradlePath := filepath.Join(pkgDir, "build.gradle")
-		gradleContent := generateBuildGradle(javaPackage, schema.Applet.Version, schemaHasStreams(schema))
+		gradleContent := generateBuildGradle(javaPackage, schema.Applet.Version, schemaHasStreams(schema), simulatorDependency)
 		if err := os.WriteFile(gradlePath, []byte(gradleContent), 0o644); err != nil {
 			fmt.Fprintf(stderr, "write %s: %v\n", gradlePath, err)
 			return exitCodeIO
@@ -337,16 +366,16 @@ let package = Package(
 `, appletLower, clientName)
 }
 
-func generateBuildGradle(javaPackage, version string, hasStreams bool) string {
+func generateBuildGradle(javaPackage, version string, hasStreams bool, simulatorDependency string) string {
 	// extract group from package: io.jcrpc.counter.server -> io.jcrpc
 	group := javaPackageGroup(javaPackage)
 	dependencies := ""
 	if hasStreams {
-		dependencies = `
+		dependencies = fmt.Sprintf(`
 dependencies {
-    compileOnly 'com.klinec:jcardsim:3.0.5.9'
+    compileOnly '%s'
 }
-`
+`, simulatorDependency)
 	}
 	return fmt.Sprintf(`plugins {
     id 'java-library'
@@ -387,6 +416,9 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  --swift string        Generate Swift client with given module name")
 	fmt.Fprintln(w, "  --kotlin string       Generate Kotlin client with given package name")
 	fmt.Fprintln(w, "  --all                 Generate Java, Swift, and Kotlin outputs (uses applet name for defaults)")
+	fmt.Fprintln(w, "  --simulator-dependency string")
+	fmt.Fprintln(w, "                        Maven coordinate of the Java Card simulator the generated")
+	fmt.Fprintln(w, "                        stream server compiles against (default \""+defaultSimulatorDependency+"\")")
 	fmt.Fprintln(w, "  --validate-only       Parse + validate only, no generation")
 	fmt.Fprintln(w, "  --verbose             Print progress to stderr")
 	fmt.Fprintln(w, "  -h, --help            Show help")

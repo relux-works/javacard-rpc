@@ -219,9 +219,24 @@ Flags:
   --swift string      Generate Swift client with given module name
   --kotlin string     Generate Kotlin client with given package name
   --all               Generate Java, Swift, and Kotlin outputs (uses applet name for defaults)
+  --simulator-dependency string
+                      Maven coordinate the generated stream server build compiles
+                      against (default "com.klinec:jcardsim:3.0.5.9")
   --validate-only     Parse + validate only
   --verbose           Print progress to stderr
 ```
+
+Simulator coordinate override (consumer pinned to a jCardSim fork, e.g. bsimId
+on `works.relux:jcardsim:3.0.5.9-relux.1`): never edit generated output or
+`bridge/build.gradle`; pass it in instead. Default output is byte-identical.
+
+```bash
+codegen/jcrpc-gen --all --out-dir ./gen --simulator-dependency works.relux:jcardsim:3.0.5.9-relux.1 applet.toml
+cd bridge && ./gradlew build -PjcardsimDependency=works.relux:jcardsim:3.0.5.9-relux.1   # or gradle.properties
+```
+
+Anything that is not a `group:artifact:version` triple is refused (jcrpc-gen
+exit 2, nothing written; Gradle `invalid jcardsimDependency`).
 
 Recommended generation commands:
 

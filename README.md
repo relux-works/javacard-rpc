@@ -230,6 +230,36 @@ stderr, no port bound, never a hang):
 Bridge tests: `cd bridge && ./gradlew test` (JUnit 5; covers default-provider
 byte-identity, both scopes over real TCP, and every refusal above).
 
+### Pinning the simulator artefact
+
+Both the generated Java Card server build and the bridge JVM compile against
+`com.klinec:jcardsim:3.0.5.9` by default. A consumer pinned to another simulator
+artefact — for example `bsimId`, which uses the `relux-works/jcardsim` fork
+`works.relux:jcardsim:3.0.5.9-relux.1` because upstream refuses
+`externalAccess=true` engines — never edits generated output or the bridge
+build; it passes the coordinate in:
+
+| Where | How | Default |
+| --- | --- | --- |
+| generated `<applet>-server-javacard/build.gradle` (`compileOnly`) | `jcrpc-gen --simulator-dependency works.relux:jcardsim:3.0.5.9-relux.1 ...` | `com.klinec:jcardsim:3.0.5.9` |
+| `bridge/build.gradle` (`implementation`) | `cd bridge && ./gradlew build -PjcardsimDependency=works.relux:jcardsim:3.0.5.9-relux.1`, or `jcardsimDependency=...` in `gradle.properties` / `~/.gradle/gradle.properties` | `com.klinec:jcardsim:3.0.5.9` |
+
+The value must be a plain `group:artifact:version` triple; anything else is
+refused before generation (`jcrpc-gen` exit code 2, nothing written) or at
+Gradle configuration time (`invalid jcardsimDependency`). The generated
+`build.gradle` is the record of which coordinate a package was generated
+against — there is no separate manifest. The bridge resolves the coordinate
+from `mavenCentral()` and then `mavenLocal()`, so a fork published with
+`./gradlew publishToMavenLocal` works without further repository setup. With
+the default the generated output is byte-identical to earlier releases.
+
+This is how `bsimId` builds:
+
+```bash
+jcrpc-gen --all --out-dir ./gen --simulator-dependency works.relux:jcardsim:3.0.5.9-relux.1 keyvault.toml
+cd bridge && ./gradlew build -PjcardsimDependency=works.relux:jcardsim:3.0.5.9-relux.1
+```
+
 ## Project structure
 
 ```

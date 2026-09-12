@@ -13,10 +13,22 @@ java {
 
 repositories {
     mavenCentral()
+    mavenLocal()
+}
+
+// Simulator coordinate the bridge JVM compiles and runs against. Override for
+// a consumer pinned to another artefact, e.g. a fork that allows
+// externalAccess=true engines:
+//   ./gradlew build -PjcardsimDependency=works.relux:jcardsim:3.0.5.9-relux.1
+// or set jcardsimDependency=... in gradle.properties / ~/.gradle/gradle.properties.
+def defaultJcardsimDependency = 'com.klinec:jcardsim:3.0.5.9'
+def jcardsimDependency = project.findProperty('jcardsimDependency') ?: defaultJcardsimDependency
+if (!(jcardsimDependency ==~ /[A-Za-z0-9_.\-]+:[A-Za-z0-9_.\-]+:[A-Za-z0-9_.\-+]+/)) {
+    throw new GradleException("invalid jcardsimDependency '${jcardsimDependency}': expected group:artifact:version (for example ${defaultJcardsimDependency})")
 }
 
 dependencies {
-    implementation 'com.klinec:jcardsim:3.0.5.9'
+    implementation jcardsimDependency
     implementation files('libs/smartcardio.jar')
 
     testImplementation platform('org.junit:junit-bom:5.11.4')

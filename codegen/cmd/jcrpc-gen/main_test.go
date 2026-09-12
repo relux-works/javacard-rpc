@@ -351,7 +351,7 @@ func TestGeneratedPackageSwiftMatchesGolden(t *testing.T) {
 func TestGeneratedBuildGradleMatchesGolden(t *testing.T) {
 	t.Parallel()
 
-	got := generateBuildGradle("io.jcrpc.counter.server", "1.0.0", false)
+	got := generateBuildGradle("io.jcrpc.counter.server", "1.0.0", false, defaultSimulatorDependency)
 	goldenPath := filepath.Join("..", "..", "testdata", "build.gradle.golden")
 	if _, err := os.Stat(goldenPath); os.IsNotExist(err) {
 		os.WriteFile(goldenPath, []byte(got), 0o644)
@@ -369,9 +369,117 @@ func TestGeneratedBuildGradleMatchesGolden(t *testing.T) {
 func TestGeneratedStreamBuildGradleIncludesJavaCardCompileAPI(t *testing.T) {
 	t.Parallel()
 
-	got := generateBuildGradle("io.jcrpc.streamdemo.server", "1.0.0", true)
+	got := generateBuildGradle("io.jcrpc.streamdemo.server", "1.0.0", true, defaultSimulatorDependency)
 	if !strings.Contains(got, "compileOnly 'com.klinec:jcardsim:3.0.5.9'") {
 		t.Fatalf("stream build.gradle does not include the Java Card compile API:\n%s", got)
+	}
+}
+
+// Proves that the default stream build.gradle produced through the production
+// CLI entry point (run) is byte-identical to the pre-parametrization output:
+// the compileOnly line still names com.klinec:jcardsim:3.0.5.9 verbatim and no
+// other byte of the file changed.
+func TestRunStreamBuildGradleDefaultSimulatorDependencyMatchesGolden(t *testing.T) {
+	t.Parallel()
+
+	outDir := t.TempDir()
+	var stderr bytes.Buffer
+	code := run([]string{
+		"--java", "io.jcrpc.streamdemo.server",
+		"--out-dir", outDir,
+		filepath.Join("..", "..", "testdata", "stream.toml"),
+	}, &stderr)
+	if code != exitCodeSuccess {
+		t.Fatalf("run returned exit code %d, stderr:\n%s", code, stderr.String())
+	}
+
+	got, err := os.ReadFile(filepath.Join(outDir, "streamdemo-server-javacard", "build.gradle"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := os.ReadFile(filepath.Join("..", "..", "testdata", "build.gradle.stream.golden"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(want) {
+		t.Fatalf("default stream build.gradle mismatch:\n%s", lineDiff(want, got))
+	}
+}
+
+// Proves that --simulator-dependency reaches the generated build.gradle through
+// run: the override coordinate replaces the default and the default coordinate
+// is absent. A generator that ignores the flag fails here.
+func TestRunStreamBuildGradleHonoursSimulatorDependencyOverride(t *testing.T) {
+	t.Parallel()
+
+	outDir := t.TempDir()
+	var stderr bytes.Buffer
+	code := run([]string{
+		"--java", "io.jcrpc.streamdemo.server",
+		"--out-dir", outDir,
+		"--simulator-dependency", "works.relux:jcardsim:3.0.5.9-relux.1",
+		filepath.Join("..", "..", "testdata", "stream.toml"),
+	}, &stderr)
+	if code != exitCodeSuccess {
+		t.Fatalf("run returned exit code %d, stderr:\n%s", code, stderr.String())
+	}
+
+	gradlePath := filepath.Join(outDir, "streamdemo-server-javacard", "build.gradle")
+	assertFileContains(t, gradlePath, "compileOnly 'works.relux:jcardsim:3.0.5.9-relux.1'")
+	content, err := os.ReadFile(gradlePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(content), "com.klinec:jcardsim:3.0.5.9") {
+		t.Fatalf("override was not honoured; default coordinate still present:\n%s", content)
+	}
+}
+
+// Proves that run refuses a --simulator-dependency that is not a plain
+// group:artifact:version triple (exit code exitCodeGeneration, nothing
+// generated), while the nearby valid override above is the positive control.
+func TestRunRefusesInvalidSimulatorDependency(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name       string
+		coordinate string
+	}{
+		{"empty", ""},
+		{"missing version", "com.klinec:jcardsim"},
+		{"four segments", "com.klinec:jcardsim:3.0.5.9:extra"},
+		{"empty segment", "com.klinec::3.0.5.9"},
+		{"quote injection", "com.klinec:jcardsim:3.0.5.9'\nfoo 'x"},
+		{"whitespace inside", "com.klinec:jcard sim:3.0.5.9"},
+		{"quote alone in version", "com.klinec:jcardsim:3.0.5.9'"},
+		{"newline alone in version", "com.klinec:jcardsim:3.0.5.9\nextra"},
+		{"space alone in version", "com.klinec:jcardsim:3.0.5 9"},
+		{"space alone in group", "com klinec:jcardsim:3.0.5.9"},
+		{"quote alone in artifact", "com.klinec:jcard'sim:3.0.5.9"},
+		{"quote alone in group", "com.klinec':jcardsim:3.0.5.9"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			outDir := t.TempDir()
+			var stderr bytes.Buffer
+			code := run([]string{
+				"--java", "io.jcrpc.streamdemo.server",
+				"--out-dir", outDir,
+				"--simulator-dependency", tc.coordinate,
+				filepath.Join("..", "..", "testdata", "stream.toml"),
+			}, &stderr)
+			if code != exitCodeGeneration {
+				t.Fatalf("expected exit code %d for %q, got %d, stderr:\n%s", exitCodeGeneration, tc.coordinate, code, stderr.String())
+			}
+			if !strings.Contains(stderr.String(), "invalid --simulator-dependency") {
+				t.Fatalf("expected refusal message, got:\n%s", stderr.String())
+			}
+			if _, err := os.Stat(filepath.Join(outDir, "streamdemo-server-javacard")); !os.IsNotExist(err) {
+				t.Fatalf("refused generation must not write output, stat err=%v", err)
+			}
+		})
 	}
 }
 
