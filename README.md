@@ -167,7 +167,7 @@ non-terminal failure, including coroutine cancellation.
 
 ## Bridge consumers: CardProvider SPI and card scope
 
-The bridge (`bridge/`, currently version `0.3.0`) exposes one consumer SPI so a host project
+The bridge (`bridge/`, currently version `0.3.1`) exposes one consumer SPI so a host project
 can bring its own card without the bridge learning anything about it:
 
 ```java
@@ -316,7 +316,7 @@ make e2e
 | Run bridge tests (CardProvider SPI, card scopes, refusals) | `make test-bridge` |
 | Run the mandatory generated Kotlin transport/lifecycle harness | `make test-kotlin-contract` |
 | Convert generated stream applet to CAP | `JCRPC_ANT_JAVACARD_JAR=... JCRPC_JCKIT_DIR=... make test-cap` |
-| Run release validation including CAP conversion | `JCRPC_ANT_JAVACARD_JAR=... JCRPC_JCKIT_DIR=... make release-check` |
+| Run release validation including CAP conversion | `JCRPC_ANT_JAVACARD_JAR=/path/to/ant-javacard.jar JCRPC_JCKIT_DIR=/path/to/oracle_javacard_sdks/jc320v25.1_kit make release-check` (`ant` must be on `PATH`) |
 | Full E2E pipeline | `make e2e` |
 
 ## Tooling
