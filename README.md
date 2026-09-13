@@ -167,7 +167,7 @@ non-terminal failure, including coroutine cancellation.
 
 ## Bridge consumers: CardProvider SPI and card scope
 
-The bridge (`bridge/`, currently version `0.3.1`) exposes one consumer SPI so a host project
+The bridge (`bridge/`, currently version `0.3.2`) exposes one consumer SPI so a host project
 can bring its own card without the bridge learning anything about it:
 
 ```java

@@ -188,7 +188,7 @@ val client = CounterClient(transport = TCPTransport())
 
 ## Bridge Consumers (CardProvider SPI)
 
-The bridge (version `0.3.1`) only needs a `CardSimulator`; who builds it is pluggable:
+The bridge (version `0.3.2`) only needs a `CardSimulator`; who builds it is pluggable:
 
 ```java
 public interface io.jcrpc.bridge.card.CardProvider { CardSimulator create(); }
