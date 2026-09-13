@@ -16,4 +16,5 @@ tasks.withType(JavaCompile).configureEach {
 
 repositories {
     mavenCentral()
+    mavenLocal()
 }

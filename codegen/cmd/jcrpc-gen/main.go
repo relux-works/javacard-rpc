@@ -395,6 +395,7 @@ tasks.withType(JavaCompile).configureEach {
 
 repositories {
     mavenCentral()
+    mavenLocal()
 }
 %s`, group, version, dependencies)
 }

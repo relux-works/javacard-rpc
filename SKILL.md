@@ -228,7 +228,9 @@ Flags:
 
 Simulator coordinate override (consumer pinned to a jCardSim fork, e.g. bsimId
 on `works.relux:jcardsim:3.0.5.9-relux.1`): never edit generated output or
-`bridge/build.gradle`; pass it in instead. Default output is byte-identical.
+`bridge/build.gradle`; pass it in instead. Both declare `mavenCentral()` then
+`mavenLocal()`, so a fork from `publishToMavenLocal` resolves as-is. Default
+output is byte-identical apart from that repositories line.
 
 ```bash
 codegen/jcrpc-gen --all --out-dir ./gen --simulator-dependency works.relux:jcardsim:3.0.5.9-relux.1 applet.toml

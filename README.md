@@ -248,10 +248,14 @@ The value must be a plain `group:artifact:version` triple; anything else is
 refused before generation (`jcrpc-gen` exit code 2, nothing written) or at
 Gradle configuration time (`invalid jcardsimDependency`). The generated
 `build.gradle` is the record of which coordinate a package was generated
-against — there is no separate manifest. The bridge resolves the coordinate
-from `mavenCentral()` and then `mavenLocal()`, so a fork published with
-`./gradlew publishToMavenLocal` works without further repository setup. With
-the default the generated output is byte-identical to earlier releases.
+against — there is no separate manifest. Both the bridge and the generated
+server `build.gradle` resolve the coordinate from `mavenCentral()` and then
+`mavenLocal()`, so a fork published with `./gradlew publishToMavenLocal` works
+without further repository setup (the generated build is covered by
+`TestRunStreamBuildGradleCompilesWithMavenLocalOnlyOverride`, which compiles it
+offline against a coordinate that exists only in a temp Maven local repo).
+With the default the generated output is byte-identical to earlier releases
+apart from the added `mavenLocal()` line.
 
 This is how `bsimId` builds:
 
