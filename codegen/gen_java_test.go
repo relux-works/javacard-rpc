@@ -109,8 +109,8 @@ func TestGenerateJavaStreamSupport(t *testing.T) {
 		"private final byte[] workspace",
 		"STATE_READ_CLOSED",
 		"sha256.digest(workspace",
-		"activeHandler.execute(",
-		"equalsRange(workspace, lastChunkOffset",
+		"((Handler) handlerSlot[IDX_HANDLER]).execute(",
+		"equalsRange(workspace, scalars[IDX_LAST_CHUNK_OFFSET]",
 		"wipe(workspace)",
 	} {
 		if !strings.Contains(runtime, fragment) {

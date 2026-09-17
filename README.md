@@ -86,7 +86,11 @@ Swift stream client is not implemented yet.
 All streamed methods in one selected applet share exactly one generated session
 manager and one transient workspace. This serializes large operations, prevents
 cross-method state corruption, and keeps reset/deselect cleanup inside generated
-code. The generated Java adapter consumes fragmented incoming APDU data before
+code. The session manager owns no mutable field: its scalar state machine lives
+in one `CLEAR_ON_DESELECT` `short[]` and the handler reference in a one-slot
+`CLEAR_ON_DESELECT` `Object[]`, both injected by the skeleton, so a WRITE chunk,
+a result or an abort never writes persistent memory and deselect or reset
+returns the session to the all-zero empty state. The generated Java adapter consumes fragmented incoming APDU data before
 dispatch. On the host, any failed or cancelled stream operation performs a
 best-effort abort and then calls `invalidateSession()` on the shared transport.
 An exception thrown during either cleanup step is ignored so it cannot replace
@@ -140,12 +144,24 @@ Generated code uses dependency injection; no framework imports in your applet lo
 ```java
 public class MyCounterApplet extends CounterSkeleton {
     @Override
-    protected byte[] onIncrement(short amount) {
-        counter += amount;
-        return packU16(counter);
+    protected short onIncrement(byte amount) {
+        short next = (short) (counter + (amount & 0xFF));
+        if (next > limit) {
+            throw statusWordFailure(SW_OVERFLOW); // no per-call allocation
+        }
+        counter = next;
+        return counter;
     }
 }
 ```
+
+The skeleton constructs exactly one `StatusWordException` at install time and
+re-arms it for every generated failure (unknown INS, wrong length, fixed-length
+response mismatch). Business failures should use `throw statusWordFailure(SW_X)`
+for the same reason: a Java Card heap is never reclaimed, so
+`new StatusWordException(...)` on a command path is a memory leak an
+unauthenticated reader can drive until the applet answers `6A84`. Read
+`getStatusWord()` in the `catch` block before dispatching anything else.
 
 **Host side**: use the generated client:
 

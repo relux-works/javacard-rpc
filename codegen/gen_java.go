@@ -42,19 +42,26 @@ public abstract class {{.ClassName}} {
     private static final short SW_WRONG_LENGTH = (short) 0x6700;
     private static final short SW_INS_NOT_SUPPORTED = (short) 0x6D00;
     private final byte[] empty;
+    // The one StatusWordException this instance ever constructs. Every
+    // generated error path (dispatch default, pack*/read*/slice guards,
+    // fixed-length response checks) re-arms and rethrows it, so an
+    // unauthenticated caller looping unknown or malformed frames cannot
+    // grow the never-reclaimed Java Card heap (security audit S-01).
+    private final StatusWordException sharedFailure;
 
     protected final {{.TransportInterfaceName}} transport;
 
     protected {{.ClassName}}({{.TransportInterfaceName}} transport) {
         this.transport = transport;
         this.empty = new byte[0];
+        this.sharedFailure = new StatusWordException(SW_INS_NOT_SUPPORTED);
     }
 
     public final byte[] dispatch(byte ins, byte p1, byte p2, byte[] data) {
         byte[] requestData = safeBytes(data);
         switch (ins) {
 {{.DispatchCasesBlock}}            default:
-                throw new StatusWordException(SW_INS_NOT_SUPPORTED);
+                throw statusWordFailure(SW_INS_NOT_SUPPORTED);
         }
     }
 
@@ -71,17 +78,41 @@ public abstract class {{.ClassName}} {
     // convertible on real Java Card Classic runtimes (no StringBuilder,
     // restricted String API), so this deliberately carries no message --
     // callers should read getStatusWord() instead of getMessage().
+    // The status word is mutable so one preconstructed instance can carry
+    // every generated failure; read it in the catch block before any other
+    // dispatch runs.
     public static final class StatusWordException extends RuntimeException {
-        private final short statusWord;
+        private short statusWord;
 
         public StatusWordException(short statusWord) {
             super();
             this.statusWord = statusWord;
         }
 
+        public void setStatusWord(short statusWord) {
+            // The instance is persistent; skip the EEPROM write when a caller
+            // loops the same failure (unknown INS, wrong length) so the loop
+            // costs no endurance either.
+            if (this.statusWord != statusWord) {
+                this.statusWord = statusWord;
+            }
+        }
+
         public short getStatusWord() {
             return statusWord;
         }
+    }
+
+    /**
+     * Generated no-allocation failure path. Arms the one preconstructed
+     * StatusWordException with the given status word and returns it, so the
+     * caller writes {@code throw statusWordFailure(SW_X);}. Subclasses should
+     * use this instead of constructing a fresh StatusWordException on any
+     * per-command path: the Java Card heap is never reclaimed.
+     */
+    protected final StatusWordException statusWordFailure(short statusWord) {
+        sharedFailure.setStatusWord(statusWord);
+        return sharedFailure;
     }
 
     private byte[] safeBytes(byte[] data) {
@@ -95,31 +126,34 @@ public abstract class {{.ClassName}} {
     // int arithmetic is otherwise allowed. This file intentionally has no
     // javacard.framework import (stays usable as plain JVM code too), so
     // array copies still go through System.arraycopy, not Util.arrayCopyNonAtomic.
+    // The helpers are instance methods (not static) only so their guards can
+    // reach the preconstructed exception; a static initializer holding an
+    // object is not portable to Java Card Classic.
 
-    protected static int packU8(byte[] buf, int off, byte value) {
+    protected final int packU8(byte[] buf, int off, byte value) {
         if (off < 0 || off >= buf.length) {
-            throw new StatusWordException(SW_WRONG_LENGTH);
+            throw statusWordFailure(SW_WRONG_LENGTH);
         }
         buf[(short) off] = value;
         return off + 1;
     }
 
-    protected static int packBool(byte[] buf, int off, boolean value) {
+    protected final int packBool(byte[] buf, int off, boolean value) {
         return packU8(buf, off, (byte) (value ? 0x01 : 0x00));
     }
 
-    protected static int packU16(byte[] buf, int off, short value) {
+    protected final int packU16(byte[] buf, int off, short value) {
         if (off < 0 || off+1 >= buf.length) {
-            throw new StatusWordException(SW_WRONG_LENGTH);
+            throw statusWordFailure(SW_WRONG_LENGTH);
         }
         buf[(short) off] = (byte) ((value >>> 8) & 0xFF);
         buf[(short) (off+1)] = (byte) (value & 0xFF);
         return off + 2;
     }
 
-    protected static int packU32(byte[] buf, int off, int value) {
+    protected final int packU32(byte[] buf, int off, int value) {
         if (off < 0 || off+3 >= buf.length) {
-            throw new StatusWordException(SW_WRONG_LENGTH);
+            throw statusWordFailure(SW_WRONG_LENGTH);
         }
         buf[(short) off] = (byte) ((value >>> 24) & 0xFF);
         buf[(short) (off+1)] = (byte) ((value >>> 16) & 0xFF);
@@ -128,9 +162,9 @@ public abstract class {{.ClassName}} {
         return off + 4;
     }
 
-    protected static int packBytes(byte[] dst, int dstOff, byte[] src, int srcOff, int srcLen) {
+    protected final int packBytes(byte[] dst, int dstOff, byte[] src, int srcOff, int srcLen) {
         if (srcLen < 0 || dstOff < 0 || srcOff < 0 || dstOff+srcLen > dst.length || srcOff+srcLen > src.length) {
-            throw new StatusWordException(SW_WRONG_LENGTH);
+            throw statusWordFailure(SW_WRONG_LENGTH);
         }
         copyBytes(src, srcOff, dst, dstOff, srcLen);
         return dstOff + srcLen;
@@ -149,37 +183,37 @@ public abstract class {{.ClassName}} {
         }
     }
 
-    private static boolean readBool(byte value) {
+    private boolean readBool(byte value) {
         if (value == 0x00) {
             return false;
         }
         if (value == 0x01) {
             return true;
         }
-        throw new StatusWordException(SW_WRONG_LENGTH);
+        throw statusWordFailure(SW_WRONG_LENGTH);
     }
 
-    private static byte readU8(byte[] data, int off) {
+    private byte readU8(byte[] data, int off) {
         if (off < 0 || off >= data.length) {
-            throw new StatusWordException(SW_WRONG_LENGTH);
+            throw statusWordFailure(SW_WRONG_LENGTH);
         }
         return data[(short) off];
     }
 
-    private static boolean readBool(byte[] data, int off) {
+    private boolean readBool(byte[] data, int off) {
         return readBool(readU8(data, off));
     }
 
-    private static short readU16(byte[] data, int off) {
+    private short readU16(byte[] data, int off) {
         if (off < 0 || off+1 >= data.length) {
-            throw new StatusWordException(SW_WRONG_LENGTH);
+            throw statusWordFailure(SW_WRONG_LENGTH);
         }
         return (short) (((data[(short) off] & 0xFF) << 8) | (data[(short) (off+1)] & 0xFF));
     }
 
-    private static int readU32(byte[] data, int off) {
+    private int readU32(byte[] data, int off) {
         if (off < 0 || off+3 >= data.length) {
-            throw new StatusWordException(SW_WRONG_LENGTH);
+            throw statusWordFailure(SW_WRONG_LENGTH);
         }
         return ((data[(short) off] & 0xFF) << 24)
             | ((data[(short) (off+1)] & 0xFF) << 16)
@@ -189,7 +223,7 @@ public abstract class {{.ClassName}} {
 
     private byte[] slice(byte[] data, int off, int len) {
         if (off < 0 || len < 0 || off+len > data.length) {
-            throw new StatusWordException(SW_WRONG_LENGTH);
+            throw statusWordFailure(SW_WRONG_LENGTH);
         }
         if (len == 0) {
             return empty;
@@ -500,7 +534,7 @@ func renderMethod(name string, m *Method) (javaMethodRender, error) {
 		if fixedLen, ok := byteSequenceFixedLength(responseFields[0]); ok {
 			lines = append(lines,
 				fmt.Sprintf("if (src.length != %d) {", fixedLen),
-				"    throw new StatusWordException(SW_WRONG_LENGTH);",
+				"    throw statusWordFailure(SW_WRONG_LENGTH);",
 				"}",
 				fmt.Sprintf("byte[] out = new byte[%d];", fixedLen),
 				fmt.Sprintf("packBytes(out, 0, src, 0, %d);", fixedLen),
@@ -525,7 +559,7 @@ func renderMethod(name string, m *Method) (javaMethodRender, error) {
 		if fixedLength, fixed := fixedMessageLength(responseFields); fixed {
 			lines = append(lines,
 				fmt.Sprintf("if (out.length != %d) {", fixedLength),
-				"    throw new StatusWordException(SW_WRONG_LENGTH);",
+				"    throw statusWordFailure(SW_WRONG_LENGTH);",
 				"}",
 			)
 		}
@@ -601,7 +635,7 @@ func buildRequestHandling(msg *Message) (requestHandling, error) {
 		if fixedDataLen > 0 {
 			rh.Lines = append(rh.Lines,
 				fmt.Sprintf("if (requestData.length < %d) {", fixedDataLen),
-				"    throw new StatusWordException(SW_WRONG_LENGTH);",
+				"    throw statusWordFailure(SW_WRONG_LENGTH);",
 				"}",
 			)
 		}

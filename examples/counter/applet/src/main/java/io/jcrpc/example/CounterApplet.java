@@ -44,7 +44,10 @@ public class CounterApplet extends CounterSkeleton {
     };
     private static final byte[] MOCK_EC_POINT = buildMockEcPoint();
     private static final byte[] MOCK_SPKI = buildMockSpki();
-    private static final byte[] MOCK_APPLET_INFO = buildMockAppletInfo();
+    // Built in the constructor: the generated pack* helpers are instance
+    // methods so their guards can reuse the skeleton's one preconstructed
+    // exception instead of allocating per call.
+    private final byte[] mockAppletInfo;
 
     private short counter;
     private short limit;
@@ -62,6 +65,7 @@ public class CounterApplet extends CounterSkeleton {
         limit = DEFAULT_LIMIT;
         storedData = new byte[MAX_DATA_SIZE];
         storedDataLen = -1; // -1 = no data stored
+        mockAppletInfo = buildMockAppletInfo();
     }
 
     @Override
@@ -69,7 +73,7 @@ public class CounterApplet extends CounterSkeleton {
         short inc = (short) (amount & 0xFF);
         short newVal = (short) (counter + inc);
         if (newVal > limit || newVal < counter) { // overflow or exceeds limit
-            throw new StatusWordException(SW_OVERFLOW);
+            throw statusWordFailure(SW_OVERFLOW);
         }
         counter = newVal;
         return counter;
@@ -79,7 +83,7 @@ public class CounterApplet extends CounterSkeleton {
     protected short onDecrement(byte amount) {
         short dec = (short) (amount & 0xFF);
         if (dec > counter) {
-            throw new StatusWordException(SW_UNDERFLOW);
+            throw statusWordFailure(SW_UNDERFLOW);
         }
         counter -= dec;
         return counter;
@@ -115,7 +119,7 @@ public class CounterApplet extends CounterSkeleton {
     @Override
     protected void onStore(byte[] data) {
         if (data.length > MAX_DATA_SIZE) {
-            throw new StatusWordException(SW_DATA_TOO_LONG);
+            throw statusWordFailure(SW_DATA_TOO_LONG);
         }
         System.arraycopy(data, 0, storedData, 0, data.length);
         storedDataLen = data.length;
@@ -124,7 +128,7 @@ public class CounterApplet extends CounterSkeleton {
     @Override
     protected byte[] onLoad() {
         if (storedDataLen < 0) {
-            throw new StatusWordException(SW_NO_DATA);
+            throw statusWordFailure(SW_NO_DATA);
         }
         byte[] result = new byte[storedDataLen];
         System.arraycopy(storedData, 0, result, 0, storedDataLen);
@@ -143,13 +147,13 @@ public class CounterApplet extends CounterSkeleton {
 
     @Override
     protected byte[] onGetAppletInfo() {
-        return copyBytes(MOCK_APPLET_INFO);
+        return copyBytes(mockAppletInfo);
     }
 
     @Override
     protected byte[] onSignChallenge(byte[] challenge) {
         if (challenge.length == 0) {
-            throw new StatusWordException(SW_EMPTY_CHALLENGE);
+            throw statusWordFailure(SW_EMPTY_CHALLENGE);
         }
         return buildMockSignature(challenge);
     }
@@ -181,7 +185,7 @@ public class CounterApplet extends CounterSkeleton {
         return out;
     }
 
-    private static byte[] buildMockAppletInfo() {
+    private byte[] buildMockAppletInfo() {
         byte[] out = new byte[12];
         int off = 0;
         off = packU8(out, off, MOCK_SCHEMA_VERSION);

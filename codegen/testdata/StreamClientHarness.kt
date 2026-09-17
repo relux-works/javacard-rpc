@@ -34,7 +34,8 @@ private class RuntimeBackedTransport(
 ) : APDUTransport {
     private val workspace = ByteArray(2048)
     private val digestScratch = ByteArray(32)
-    private val resetMarker = ByteArray(1)
+    private val scalars = ShortArray(StreamDemoBoundedStreamRuntime.SCALAR_COUNT.toInt())
+    private val handlerSlot = arrayOfNulls<Any>(StreamDemoBoundedStreamRuntime.HANDLER_SLOT_COUNT.toInt())
     private var writeChunkResponseLost = false
     private var closeWriteResponseLost = false
     private var readChunkResponseLost = false
@@ -83,7 +84,8 @@ private class RuntimeBackedTransport(
     private val runtime = StreamDemoBoundedStreamRuntime(
         workspace,
         digestScratch,
-        resetMarker,
+        scalars,
+        handlerSlot,
         sha256,
     )
 

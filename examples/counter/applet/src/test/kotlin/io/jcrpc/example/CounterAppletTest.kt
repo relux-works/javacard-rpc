@@ -427,6 +427,23 @@ class CounterAppletTest {
             assertEquals(0x6D00, resp.sw)
         }
 
+        // Security audit S-01 regression through the real jCardSim APDU path:
+        // an unauthenticated reader looping unknown-INS frames must keep getting
+        // 6D00 (never 6A84 from heap exhaustion) and a valid request must still
+        // succeed afterwards. jCardSim runs on a garbage-collected JVM heap, so
+        // this proves the protocol invariant, not the zero-allocation bound;
+        // that bound is the generator's DispatchAllocationHarness identity test.
+        @Test
+        fun `10000 unknown INS frames keep answering 6D00 and the applet stays usable`() {
+            repeat(10_000) { frame ->
+                val ins = 0x40 + (frame and 0x3F)
+                assertEquals(0x6D00, send(ins).sw, "frame $frame (INS ${"%02X".format(ins)})")
+            }
+            val incremented = send(0x01, p1 = 5)
+            assertEquals(0x9000, incremented.sw)
+            assertEquals(5, readU16(incremented.data))
+        }
+
         @Test
         fun `setLimit with short data returns 6700`() {
             // Only 1 byte, needs 2

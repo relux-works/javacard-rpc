@@ -10,7 +10,9 @@ public final class StreamRuntimeHarness {
         testBidirectionalHappyPathAndLostCloseAck();
         testResponseOnlyStream();
         testCrossMethodInterleavingPreservesOwner();
-        testResetBoundaryClearsPersistentState();
+        testDeselectClearedTransientStateStartsEmpty();
+        testAbortLeavesTransientStateAllZero();
+        testStateMachineLivesOnlyInInjectedArrays();
         testResponsePreflightRunsBeforeHandler();
         testConflictingReplayWipesWorkspace();
         testDigestMismatchWipesWorkspace();
@@ -106,18 +108,60 @@ public final class StreamRuntimeHarness {
                 "owning method must remain usable");
     }
 
-    private static void testResetBoundaryClearsPersistentState() {
+    // S-06: CLEAR_ON_DESELECT zeroes every injected array. Emulate that here and
+    // prove the runtime treats the all-zero image as the empty state: a pending
+    // read is refused with 6985, nothing of the old session survives, and a
+    // fresh session starts cleanly. No reset marker is involved any more.
+    private static void testDeselectClearedTransientStateStartsEmpty() {
         Fixture fixture = new Fixture();
         Session session = fixture.session((byte) 1, true, true, new CountingReverseHandler());
         byte[] response = new byte[255];
         send(session, 0, 0, 2, new byte[192], response);
-        fixture.resetMarker[0] = 0;
+        require(!allZero(fixture.scalars), "a live session must have non-zero scalar state");
+        fixture.emulateDeselect();
 
         expectStatus(0x6985, () -> send(session, 2, 0, 0, EMPTY, response));
-        require(allZero(fixture.workspace), "reset boundary must wipe workspace");
+        require(allZero(fixture.workspace), "deselect image must leave the workspace empty");
 
         send(session, 0, 0, 1, new byte[]{1}, response);
-        require(fixture.workspace[0] == 1, "fresh session must start after reset cleanup");
+        require(fixture.workspace[0] == 1, "fresh session must start after a deselect clear");
+    }
+
+    // S-06: an explicit abort must leave the injected arrays bit-identical to the
+    // CLEAR_ON_DESELECT image (all zero, handler slot empty) — the runtime has no
+    // other place to keep state, so this is the whole post-abort footprint.
+    private static void testAbortLeavesTransientStateAllZero() {
+        Fixture fixture = new Fixture();
+        Session session = fixture.session((byte) 1, true, true, new CountingReverseHandler());
+        byte[] response = new byte[255];
+        send(session, 0, 0, 2, new byte[192], response);
+        require(fixture.handlerSlot[0] != null, "a live session must hold its handler");
+
+        require(send(session, 5, 0, 0, EMPTY, response) == 0, "abort");
+        require(allZero(fixture.scalars), "abort must zero the scalar state machine");
+        require(fixture.handlerSlot[0] == null, "abort must drop the handler reference");
+        require(allZero(fixture.workspace) && allZero(fixture.digest), "abort must wipe buffers");
+    }
+
+    // S-06: the state machine has no home outside the injected arrays. Two
+    // runtimes sharing the same arrays must observe each other's session — a
+    // hidden instance field would make the second runtime see an empty state.
+    private static void testStateMachineLivesOnlyInInjectedArrays() throws Exception {
+        Fixture fixture = new Fixture();
+        StreamDemoBoundedStreamRuntime twin = fixture.twinRuntime();
+        CountingReverseHandler handler = new CountingReverseHandler();
+        Session session = fixture.session((byte) 1, true, true, handler);
+        byte[] response = new byte[255];
+        send(session, 0, 0, 2, new byte[192], response);
+
+        Session viaTwin = new Session(twin, (byte) 1, true, true, (short) -1, handler);
+        byte[] tail = new byte[]{8};
+        send(viaTwin, 0, 1, 2, tail, response);
+        byte[] complete = new byte[193];
+        complete[192] = 8;
+        require(send(viaTwin, 1, 0, 0, closeData(complete), response) == 35,
+                "twin runtime over the same arrays must continue the session");
+        require(handler.calls == 1, "handler must execute once through the twin");
     }
 
     private static void testResponsePreflightRunsBeforeHandler() throws Exception {
@@ -278,6 +322,11 @@ public final class StreamRuntimeHarness {
         return true;
     }
 
+    private static boolean allZero(short[] value) {
+        for (short item : value) if (item != 0) return false;
+        return true;
+    }
+
     private static void expectStatus(int expected, CheckedRunnable body) {
         try {
             body.run();
@@ -298,9 +347,10 @@ public final class StreamRuntimeHarness {
     private static final class Fixture {
         final byte[] workspace = new byte[2048];
         final byte[] digest = new byte[32];
-        final byte[] resetMarker = new byte[1];
+        final short[] scalars = new short[StreamDemoBoundedStreamRuntime.SCALAR_COUNT];
+        final Object[] handlerSlot = new Object[StreamDemoBoundedStreamRuntime.HANDLER_SLOT_COUNT];
         final StreamDemoBoundedStreamRuntime runtime = new StreamDemoBoundedStreamRuntime(
-                workspace, digest, resetMarker,
+                workspace, digest, scalars, handlerSlot,
                 (input, inputOffset, inputLength, output, outputOffset) -> {
                     try {
                         MessageDigest md = MessageDigest.getInstance("SHA-256");
@@ -315,6 +365,29 @@ public final class StreamRuntimeHarness {
         Session session(byte methodId, boolean request, boolean response,
                         StreamDemoStreamEndpoint.Handler handler) {
             return session(methodId, request, response, (short) -1, handler);
+        }
+
+        /** What CLEAR_ON_DESELECT does to every injected array. */
+        void emulateDeselect() {
+            Arrays.fill(workspace, (byte) 0);
+            Arrays.fill(digest, (byte) 0);
+            Arrays.fill(scalars, (short) 0);
+            Arrays.fill(handlerSlot, null);
+        }
+
+        /** A second runtime bound to the very same transient arrays. */
+        StreamDemoBoundedStreamRuntime twinRuntime() {
+            return new StreamDemoBoundedStreamRuntime(workspace, digest, scalars, handlerSlot,
+                    (input, inputOffset, inputLength, output, outputOffset) -> {
+                        try {
+                            MessageDigest md = MessageDigest.getInstance("SHA-256");
+                            md.update(input, inputOffset, inputLength);
+                            byte[] value = md.digest();
+                            System.arraycopy(value, 0, output, outputOffset, value.length);
+                        } catch (Exception failure) {
+                            throw new RuntimeException(failure);
+                        }
+                    });
         }
 
         Session session(byte methodId, boolean request, boolean response,

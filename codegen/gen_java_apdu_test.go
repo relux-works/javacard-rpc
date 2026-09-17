@@ -98,6 +98,12 @@ public final class JCSystem {
     public static byte[] makeTransientByteArray(short length, byte event) {
         return new byte[length];
     }
+    public static short[] makeTransientShortArray(short length, byte event) {
+        return new short[length];
+    }
+    public static Object[] makeTransientObjectArray(short length, byte event) {
+        return new Object[length];
+    }
 }
 `
 
