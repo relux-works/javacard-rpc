@@ -27,6 +27,7 @@ func TestGeneratedJavaStreamRuntimeHarness(t *testing.T) {
 	}
 
 	root := t.TempDir()
+	javaCardStub := writeJavaCardJCSystemStub(t, root)
 	packageDir := filepath.Join(root, "io", "jcrpc", "streamdemo", "server")
 	if err := os.MkdirAll(packageDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
@@ -42,6 +43,7 @@ func TestGeneratedJavaStreamRuntimeHarness(t *testing.T) {
 	files["StreamRuntimeHarness.java"] = harness
 
 	paths := make([]string, 0, len(files))
+	paths = append(paths, javaCardStub)
 	for name, source := range files {
 		path := filepath.Join(packageDir, name)
 		if err := os.WriteFile(path, source, 0o644); err != nil {

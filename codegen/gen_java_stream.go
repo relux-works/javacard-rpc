@@ -9,6 +9,8 @@ import (
 
 const javaStreamEndpointTemplate = `package {{.PackageName}};
 
+import javacard.framework.JCSystem;
+
 /**
  * Generated boundary for the single applet-level bounded stream session.
  * One implementation owns every streamed method in one selected applet.
@@ -80,25 +82,24 @@ public interface {{.StreamEndpointName}} {
                 short outputOffset);
     }
 
-    /** One mutable exception object is allocated once at applet installation. */
+    /** One exception object is allocated once; its status is transient RAM. */
     final class StreamStatusWordException extends RuntimeException {
-        private short statusWord;
+        private final short[] status;
 
         public StreamStatusWordException(short statusWord) {
             super();
-            this.statusWord = statusWord;
+            this.status = JCSystem.makeTransientShortArray(
+                    (short) 1, JCSystem.CLEAR_ON_RESET);
+            this.status[0] = statusWord;
         }
 
         public void setStatusWord(short statusWord) {
-            // Persistent instance: skip the EEPROM write when the same
-            // failure repeats, so a refusal loop costs no endurance.
-            if (this.statusWord != statusWord) {
-                this.statusWord = statusWord;
-            }
+            // This array is transient RAM; changing status never writes EEPROM.
+            this.status[0] = statusWord;
         }
 
         public short getStatusWord() {
-            return statusWord;
+            return status[0];
         }
     }
 }
@@ -789,7 +790,6 @@ func augmentJavaSkeletonForStreams(source string, data *javaTemplateData, method
 	packageNeedle := "package " + data.PackageName + ";\n"
 	imports := packageNeedle + `
 
-import javacard.framework.JCSystem;
 import javacard.framework.ISOException;
 import javacard.security.MessageDigest;
 `

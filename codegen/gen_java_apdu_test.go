@@ -94,6 +94,7 @@ public final class ISOException extends RuntimeException {
 
 const apduJCSystemStub = `package javacard.framework;
 public final class JCSystem {
+    public static final byte CLEAR_ON_RESET = 0;
     public static final byte CLEAR_ON_DESELECT = 1;
     public static byte[] makeTransientByteArray(short length, byte event) {
         return new byte[length];

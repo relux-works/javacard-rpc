@@ -22,6 +22,8 @@ public interface {{.TransportInterfaceName}} {
 
 const javaSkeletonTemplate = `package {{.PackageName}};
 
+import javacard.framework.JCSystem;
+
 /**
  * Generated skeleton for {{.AppletName}} applet.
  * DO NOT EDIT — this file is produced by javacard-rpc codegen from {{.SchemaFileName}}.
@@ -78,28 +80,26 @@ public abstract class {{.ClassName}} {
     // convertible on real Java Card Classic runtimes (no StringBuilder,
     // restricted String API), so this deliberately carries no message --
     // callers should read getStatusWord() instead of getMessage().
-    // The status word is mutable so one preconstructed instance can carry
-    // every generated failure; read it in the catch block before any other
-    // dispatch runs.
+    // The reusable exception keeps its changing status in a CLEAR_ON_RESET
+    // transient array, so one preconstructed instance can carry every
+    // generated failure without writing persistent memory per frame.
     public static final class StatusWordException extends RuntimeException {
-        private short statusWord;
+        private final short[] status;
 
         public StatusWordException(short statusWord) {
             super();
-            this.statusWord = statusWord;
+            this.status = JCSystem.makeTransientShortArray(
+                    (short) 1, JCSystem.CLEAR_ON_RESET);
+            this.status[0] = statusWord;
         }
 
         public void setStatusWord(short statusWord) {
-            // The instance is persistent; skip the EEPROM write when a caller
-            // loops the same failure (unknown INS, wrong length) so the loop
-            // costs no endurance either.
-            if (this.statusWord != statusWord) {
-                this.statusWord = statusWord;
-            }
+            // This array is transient RAM; changing status never writes EEPROM.
+            this.status[0] = statusWord;
         }
 
         public short getStatusWord() {
-            return statusWord;
+            return status[0];
         }
     }
 
@@ -123,9 +123,9 @@ public abstract class {{.ClassName}} {
     // ints="true" support in the CAP build), but every actual array index is
     // explicitly narrowed to short at the point of use -- the JCVM only
     // accepts short/byte operands for array load/store, even when general
-    // int arithmetic is otherwise allowed. This file intentionally has no
-    // javacard.framework import (stays usable as plain JVM code too), so
-    // array copies still go through System.arraycopy, not Util.arrayCopyNonAtomic.
+    // int arithmetic is otherwise allowed. This file imports only JCSystem for
+    // transient status storage, so array copies still go through System.arraycopy,
+    // not Util.arrayCopyNonAtomic.
     // The helpers are instance methods (not static) only so their guards can
     // reach the preconstructed exception; a static initializer holding an
     // object is not portable to Java Card Classic.

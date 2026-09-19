@@ -366,17 +366,17 @@ let package = Package(
 `, appletLower, clientName)
 }
 
-func generateBuildGradle(javaPackage, version string, hasStreams bool, simulatorDependency string) string {
+func generateBuildGradle(javaPackage, version string, _ bool, simulatorDependency string) string {
 	// extract group from package: io.jcrpc.counter.server -> io.jcrpc
 	group := javaPackageGroup(javaPackage)
-	dependencies := ""
-	if hasStreams {
-		dependencies = fmt.Sprintf(`
+	// Every generated skeleton uses JCSystem for CLEAR_ON_RESET status storage.
+	// Keep the compile-only Java Card API available for ordinary and streamed
+	// packages alike.
+	dependencies := fmt.Sprintf(`
 dependencies {
     compileOnly '%s'
 }
 `, simulatorDependency)
-	}
 	return fmt.Sprintf(`plugins {
     id 'java-library'
 }

@@ -1,5 +1,9 @@
 package io.jcrpc.counter.server;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import javacard.framework.JCSystem;
+
 /**
  * JVM regression witness for security audit S-01 (javacard-rpc, plan row T-20).
  *
@@ -15,7 +19,8 @@ package io.jcrpc.counter.server;
  * discriminating and not satisfied by a vacuous comparison.
  */
 public final class DispatchAllocationHarness {
-    private static final int UNKNOWN_FRAMES = 10_000;
+	private static final int UNKNOWN_FRAMES = 10_000;
+	private static final int ALTERNATING_STATUS_FRAMES = 10_000;
 
     private static final byte INS_INCREMENT = (byte) 0x01;
     private static final byte INS_GET = (byte) 0x03;
@@ -28,8 +33,10 @@ public final class DispatchAllocationHarness {
     private static final short SW_INS_NOT_SUPPORTED = (short) 0x6D00;
     private static final short SW_BUSINESS = (short) 0x6A86;
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         Logic logic = new Logic();
+
+		testAlternatingStatusesKeepTheSameExceptionAndTransientFields();
 
         // 1. N unknown-INS frames: every throw is the same object and keeps 6D00.
         CounterSkeleton.StatusWordException first = expectFailure(logic, (byte) 0x40, null);
@@ -90,6 +97,89 @@ public final class DispatchAllocationHarness {
         require(expectFailure(other, (byte) 0x40, null) != first,
                 "each skeleton instance must own its exception");
     }
+
+	// R3-04 regression: alternating 6D00/6700 frames must reuse the same
+	// exception object while only changing its CLEAR_ON_RESET array contents.
+	// Reflection snapshots the object's own instance fields, so a persistent
+	// short status field fails on the first transition even though object identity
+	// remains stable.
+	private static void testAlternatingStatusesKeepTheSameExceptionAndTransientFields() throws Exception {
+		Logic logic = new Logic();
+		Field[] fields = instanceFields(CounterSkeleton.StatusWordException.class);
+		Field statusBacking = null;
+		for (Field field : fields) {
+			if (field.getType() == short[].class) {
+				statusBacking = field;
+				break;
+			}
+		}
+		require(statusBacking != null,
+				"reusable status exception must own a transient short[] backing store");
+
+		CounterSkeleton.StatusWordException first = null;
+		Object[] initialFields = null;
+		for (int frame = 0; frame < ALTERNATING_STATUS_FRAMES; frame++) {
+			boolean unknownInstruction = (frame & 1) == 0;
+			CounterSkeleton.StatusWordException failure = unknownInstruction
+					? expectFailure(logic, (byte) 0x40, null)
+					: expectFailure(logic, INS_SET_LIMIT, new byte[]{1});
+			short expected = unknownInstruction ? SW_INS_NOT_SUPPORTED : SW_WRONG_LENGTH;
+
+			if (first == null) {
+				first = failure;
+				initialFields = snapshot(fields, failure);
+				Object backing = statusBacking.get(failure);
+				require(backing instanceof short[],
+						"status backing field must remain an array reference");
+				require(JCSystem.isTransientForTest(backing),
+						"status backing field must reference the registered transient array");
+			} else {
+				require(failure == first,
+						"alternating frame " + frame + " allocated a different exception");
+				requireFieldsUnchanged(fields, initialFields, failure, frame);
+			}
+			require(failure.getStatusWord() == expected,
+					"alternating frame " + frame + " returned the wrong status word");
+		}
+	}
+
+	private static Field[] instanceFields(Class<?> type) {
+		Field[] declared = type.getDeclaredFields();
+		int count = 0;
+		for (Field field : declared) {
+			if (!Modifier.isStatic(field.getModifiers())) count++;
+		}
+		Field[] result = new Field[count];
+		int index = 0;
+		for (Field field : declared) {
+			if (Modifier.isStatic(field.getModifiers())) continue;
+			field.setAccessible(true);
+			result[index++] = field;
+		}
+		return result;
+	}
+
+	private static Object[] snapshot(Field[] fields, Object target) throws IllegalAccessException {
+		Object[] result = new Object[fields.length];
+		for (int index = 0; index < fields.length; index++) {
+			result[index] = fields[index].get(target);
+		}
+		return result;
+	}
+
+	private static void requireFieldsUnchanged(Field[] fields, Object[] initial,
+			Object target, int frame) throws IllegalAccessException {
+		for (int index = 0; index < fields.length; index++) {
+			Object before = initial[index];
+			Object after = fields[index].get(target);
+			boolean unchanged = fields[index].getType().isPrimitive()
+					? before.equals(after)
+					: before == after;
+			require(unchanged,
+					"persistent field " + fields[index].getName()
+							+ " changed on alternating frame " + frame);
+		}
+	}
 
     private static CounterSkeleton.StatusWordException expectFailure(Logic logic, byte ins, byte[] data) {
         return expectFailure(logic, ins, (byte) 0, data);

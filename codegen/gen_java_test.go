@@ -248,6 +248,7 @@ func TestGenerateJavaSkeletonCounterTransportShape(t *testing.T) {
 	skeletonSrc := string(result.SkeletonSource)
 	skeletonRequired := []string{
 		"public abstract class CounterSkeleton {",
+		"import javacard.framework.JCSystem;",
 		"protected final CounterTransport transport;",
 		"protected CounterSkeleton(CounterTransport transport)",
 		"public final byte[] dispatch(byte ins, byte p1, byte p2, byte[] data)",
@@ -260,7 +261,6 @@ func TestGenerateJavaSkeletonCounterTransportShape(t *testing.T) {
 
 	forbidden := []string{
 		"extends AppletBase",
-		"import javacard.framework",
 		"io.jcrpc.server.AppletBase",
 	}
 	for _, needle := range forbidden {

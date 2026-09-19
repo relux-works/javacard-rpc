@@ -18,3 +18,7 @@ repositories {
     mavenCentral()
     mavenLocal()
 }
+
+dependencies {
+    compileOnly 'com.klinec:jcardsim:3.0.5.9'
+}

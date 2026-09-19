@@ -41,11 +41,13 @@ func TestGeneratedJavaSkeletonRequiresExactFixedResponseLength(t *testing.T) {
 	if err := os.MkdirAll(packageDir, 0o755); err != nil {
 		t.Fatalf("create package directory: %v", err)
 	}
+	javaCardStub := writeJavaCardJCSystemStub(t, root)
 	writeTestFile(t, filepath.Join(packageDir, result.TransportName+".java"), result.TransportSource)
 	writeTestFile(t, filepath.Join(packageDir, result.SkeletonName+".java"), result.SkeletonSource)
 	writeTestFile(t, filepath.Join(packageDir, "FixedResponseHarness.java"), []byte(fixedResponseHarness))
 
 	compile := exec.Command(javac,
+		javaCardStub,
 		filepath.Join(packageDir, result.TransportName+".java"),
 		filepath.Join(packageDir, result.SkeletonName+".java"),
 		filepath.Join(packageDir, "FixedResponseHarness.java"),

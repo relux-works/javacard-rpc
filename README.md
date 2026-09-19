@@ -98,6 +98,11 @@ the authoritative protocol failure or coroutine cancellation.
 The generated client also rejects a concurrent streamed call locally with
 `StreamBusy`, without sending an APDU that could abort the active call.
 
+Generated reusable status-word exceptions keep their changing status in a
+one-slot `CLEAR_ON_RESET` transient `short[]`. The exception object itself is
+still preconstructed once per skeleton/runtime, so alternating error statuses
+do not write a persistent field or allocate on the dispatch path.
+
 The applet itself still owns normal Java Card lifecycle wiring. Instantiate the
 generated stream adapter once, let it inspect the APDU before ordinary dispatch,
 and forward deselection to it. The session manager remains generated:

@@ -83,6 +83,7 @@ func TestGeneratedKotlinStreamClientHarness(t *testing.T) {
 	if err := os.MkdirAll(javaDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll Java: %v", err)
 	}
+	writeJavaCardJCSystemStubAt(t, filepath.Join(root, "src", "main", "java", "javacard", "framework"))
 	writeTestFile(t, filepath.Join(mainDir, "StreamDemoClient.kt"), source)
 	writeTestFile(t, filepath.Join(javaDir, javaResult.StreamEndpointName+".java"), javaResult.StreamEndpointSource)
 	writeTestFile(t, filepath.Join(javaDir, javaResult.StreamRuntimeName+".java"), javaResult.StreamRuntimeSource)

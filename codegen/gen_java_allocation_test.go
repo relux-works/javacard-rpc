@@ -1,6 +1,7 @@
 package codegen
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -87,6 +88,7 @@ func TestGeneratedJavaSkeletonUnknownInsReusesOneException(t *testing.T) {
 	if err := os.MkdirAll(packageDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
 	}
+	javaCardStub := writeJavaCardJCSystemStub(t, root)
 	writeTestFile(t, filepath.Join(packageDir, result.TransportName+".java"), result.TransportSource)
 	writeTestFile(t, filepath.Join(packageDir, result.SkeletonName+".java"), result.SkeletonSource)
 	harness, err := os.ReadFile(filepath.Join("testdata", "DispatchAllocationHarness.java"))
@@ -96,6 +98,7 @@ func TestGeneratedJavaSkeletonUnknownInsReusesOneException(t *testing.T) {
 	writeTestFile(t, filepath.Join(packageDir, "DispatchAllocationHarness.java"), harness)
 
 	compile := exec.Command(javac, "-d", root,
+		javaCardStub,
 		filepath.Join(packageDir, result.TransportName+".java"),
 		filepath.Join(packageDir, result.SkeletonName+".java"),
 		filepath.Join(packageDir, "DispatchAllocationHarness.java"),
@@ -115,10 +118,10 @@ func TestGeneratedJavaSkeletonUnknownInsReusesOneException(t *testing.T) {
 // and every abort used to rewrite ~17 EEPROM scalars; on a physical card that
 // is an endurance sink and a persistent-state leak across deselect.
 //
-// Static proof on the generated source: the runtime declares no mutable
-// instance field (every field is `private final` or `private static final`),
-// the skeleton hands it `JCSystem.makeTransientShortArray(..., CLEAR_ON_DESELECT)`
-// and `makeTransientObjectArray(..., CLEAR_ON_DESELECT)`, and the legacy reset
+// Static proof on the generated source: the runtime and both nested exception
+// classes declare no mutable persistent field; reusable exception status lives
+// in a CLEAR_ON_RESET short array; the skeleton hands stream state
+// JCSystem.makeTransient* arrays with CLEAR_ON_DESELECT; and the legacy reset
 // marker is gone. jCardSim cannot measure EEPROM writes, so this is the bound
 // the generator test can state; endurance measurement is the hardware lane.
 func TestGeneratedJavaStreamRuntimeKeepsStateInTransientArrays(t *testing.T) {
@@ -132,17 +135,7 @@ func TestGeneratedJavaStreamRuntimeKeepsStateInTransientArrays(t *testing.T) {
 	}
 
 	runtime := string(result.StreamRuntimeSource)
-	classBody := runtime[strings.Index(runtime, "public final class "):]
-	// Field declarations are the `    private ...;` lines without a `(`;
-	// anything that is neither `static final` nor `final` is a mutable
-	// persistent scalar (or object reference) and fails the S-06 bound.
-	fieldLine := regexp.MustCompile(`(?m)^    private [^(\n]*;$`)
-	for _, line := range fieldLine.FindAllString(classBody, -1) {
-		if strings.HasPrefix(line, "    private static final ") || strings.HasPrefix(line, "    private final ") {
-			continue
-		}
-		t.Fatalf("generated stream runtime keeps a mutable persistent field:\n%s", line)
-	}
+	assertNoMutablePrivateFields(t, "generated stream runtime", runtime)
 	for _, fragment := range []string{
 		"short[] scalars",
 		"Object[] handlerSlot",
@@ -155,7 +148,13 @@ func TestGeneratedJavaStreamRuntimeKeepsStateInTransientArrays(t *testing.T) {
 		t.Fatalf("generated stream runtime still carries the reset-marker trick that only persistent scalars needed")
 	}
 
+	endpoint := string(result.StreamEndpointSource)
+	assertNoMutablePrivateFields(t, "generated stream endpoint", endpoint)
+	assertTransientStatusWordException(t, "generated stream endpoint", endpoint, "StreamStatusWordException")
+
 	skeleton := string(result.SkeletonSource)
+	assertNoMutablePrivateFields(t, "generated stream skeleton", skeleton)
+	assertTransientStatusWordException(t, "generated stream skeleton", skeleton, "StatusWordException")
 	for _, fragment := range []string{
 		"JCSystem.makeTransientShortArray(",
 		"JCSystem.makeTransientObjectArray(",
@@ -169,6 +168,124 @@ func TestGeneratedJavaStreamRuntimeKeepsStateInTransientArrays(t *testing.T) {
 	if strings.Contains(skeleton, "STREAM_RESET_MARKER_LENGTH") {
 		t.Fatalf("generated skeleton still allocates the reset marker")
 	}
+}
+
+func assertNoMutablePrivateFields(t *testing.T, label, source string) {
+	t.Helper()
+	for _, line := range strings.Split(source, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "private ") || !strings.HasSuffix(trimmed, ";") {
+			continue
+		}
+		if strings.Contains(trimmed, "(") {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "private static final ") || strings.HasPrefix(trimmed, "private final ") {
+			continue
+		}
+		t.Fatalf("%s keeps a mutable persistent field: %s", label, trimmed)
+	}
+}
+
+func assertTransientStatusWordException(t *testing.T, label, source, className string) {
+	t.Helper()
+	if err := validateTransientStatusWordException(source, className); err != nil {
+		t.Fatalf("%s: %v", label, err)
+	}
+}
+
+// Test the source gate against the two named narrowing mutants. These fixtures
+// prove that an unrelated transient-allocation token and a persistent scalar
+// cannot satisfy the nested-class assertion.
+func TestGeneratedJavaStatusStorageMutantsAreRejected(t *testing.T) {
+	mutants := []struct {
+		name   string
+		source string
+	}{
+		{
+			name: "status kept in a persistent field",
+			source: `public static final class StatusWordException extends RuntimeException {
+    private short statusWord;
+    public StatusWordException(short statusWord) {
+        super();
+        this.statusWord = statusWord;
+    }
+    public short getStatusWord() { return statusWord; }
+}`,
+		},
+		{
+			name: "reviewer token-preserving persistent array",
+			source: `public static final class StatusWordException extends RuntimeException {
+    private final short[] status;
+    public StatusWordException(short statusWord) {
+        super();
+        JCSystem.makeTransientShortArray((short) 1, JCSystem.CLEAR_ON_RESET);
+        this.status = new short[1];
+    }
+    public short getStatusWord() { return status[0]; }
+}`,
+		},
+	}
+
+	for _, mutant := range mutants {
+		t.Run(mutant.name, func(t *testing.T) {
+			if err := validateTransientStatusWordException(mutant.source, "StatusWordException"); err == nil {
+				t.Fatalf("named mutant was admitted by the nested-class transient-storage gate")
+			}
+		})
+	}
+}
+
+func validateTransientStatusWordException(source, className string) error {
+	classBody, err := javaClassBody(source, className)
+	if err != nil {
+		return err
+	}
+
+	field := regexp.MustCompile(`(?m)^[ \t]*private[ \t]+final[ \t]+short\[\][ \t]+status[ \t]*;[ \t]*$`)
+	if !field.MatchString(classBody) {
+		return fmt.Errorf("class %s does not keep status in a final short[] field", className)
+	}
+
+	constructor := regexp.MustCompile(`(?s)\bpublic\s+` + regexp.QuoteMeta(className) +
+		`\s*\(\s*short\s+statusWord\s*\)\s*\{[^{}]*this\.status\s*=\s*` +
+		`JCSystem\.makeTransientShortArray\(\s*\(short\)\s*1\s*,\s*JCSystem\.CLEAR_ON_RESET\s*\)\s*;`)
+	if !constructor.MatchString(classBody) {
+		return fmt.Errorf("class %s does not assign status from its CLEAR_ON_RESET allocation in the constructor", className)
+	}
+
+	getter := regexp.MustCompile(`(?s)\bpublic\s+short\s+getStatusWord\s*\(\s*\)\s*\{[^{}]*return\s+status\s*\[\s*0\s*\]\s*;`)
+	if !getter.MatchString(classBody) {
+		return fmt.Errorf("class %s does not read getStatusWord() from status[0]", className)
+	}
+	return nil
+}
+
+func javaClassBody(source, className string) (string, error) {
+	declaration := regexp.MustCompile(`(?m)^[ \t]*((public|protected|private|static|final)[ \t]+)*class[ \t]+` + regexp.QuoteMeta(className) + `\b`)
+	loc := declaration.FindStringIndex(source)
+	if loc == nil {
+		return "", fmt.Errorf("class %s not found", className)
+	}
+
+	openRelative := strings.Index(source[loc[0]:], "{")
+	if openRelative < 0 {
+		return "", fmt.Errorf("class %s has no body", className)
+	}
+	open := loc[0] + openRelative
+	depth := 0
+	for index := open; index < len(source); index++ {
+		switch source[index] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return source[open : index+1], nil
+			}
+		}
+	}
+	return "", fmt.Errorf("class %s body is not brace-balanced", className)
 }
 
 // javaMethodBody returns the brace-balanced body of the first Java method
