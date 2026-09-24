@@ -876,8 +876,77 @@ func buildJavaStreamConstructor(data *javaTemplateData) string {
 }
 
 func buildJavaStreamDispatchSupport(data *javaTemplateData, methods []javaMethodRender) string {
+	type streamRow struct {
+		ins                byte
+		directions         byte
+		requestMax         int
+		requestChunk       int
+		responseMax        int
+		responseChunk      int
+		exactShortResponse int
+	}
+
+	rows := make([]streamRow, 0, len(methods))
+	for _, method := range methods {
+		if !method.IsStream {
+			continue
+		}
+		requestEnabled, requestMax, requestChunk := javaStreamFieldConfig(method.RequestStream)
+		responseEnabled, responseMax, responseChunk := javaStreamFieldConfig(method.ResponseStream)
+		directions := byte(0)
+		if requestEnabled {
+			directions |= 0x02
+		}
+		if responseEnabled {
+			directions |= 0x01
+		}
+		rows = append(rows, streamRow{
+			ins:                method.INS,
+			directions:         directions,
+			requestMax:         requestMax,
+			requestChunk:       requestChunk,
+			responseMax:        responseMax,
+			responseChunk:      responseChunk,
+			exactShortResponse: method.ExactShortResponseLength,
+		})
+	}
+
 	var b strings.Builder
-	b.WriteString(`    /**
+	b.WriteString(`    // One row per streamed method, in method-id order. A streamed method owns six
+    // consecutive instructions, base + 0..5, in the operation order the endpoint
+    // declares (OP_WRITE_OR_INVOKE first, OP_ABORT last), so the instruction alone
+    // decodes to a method id and an operation. Holes between families stay holes.
+    private static final byte[] STREAM_INS_BASE = {
+`)
+	writeJavaByteRows(&b, len(rows), func(i int) string {
+		return fmt.Sprintf("(byte) 0x%02X", rows[i].ins)
+	})
+	b.WriteString(`
+    // Bit 1: the request carries a stream. Bit 0: the response carries a stream.
+    private static final byte[] STREAM_DIRECTIONS = {
+`)
+	writeJavaByteRows(&b, len(rows), func(i int) string {
+		return fmt.Sprintf("(byte) %d", rows[i].directions)
+	})
+	b.WriteString(`
+    // Five columns per row: request maximum, request chunk, response maximum,
+    // response chunk, exact short-response length.
+    private static final short[] STREAM_LIMITS = {
+`)
+	for i, row := range rows {
+		terminator := ","
+		if i == len(rows)-1 {
+			terminator = " };"
+		}
+		fmt.Fprintf(&b, "        (short) %d, (short) %d, (short) %d, (short) %d, (short) %d%s\n",
+			row.requestMax, row.requestChunk, row.responseMax, row.responseChunk,
+			row.exactShortResponse, terminator)
+	}
+	b.WriteString(`
+    private static final short STREAM_LIMIT_COLUMNS = (short) 5;
+    private static final short STREAM_OPERATION_COUNT = (short) 6;
+
+    /**
      * No-allocation dispatch used by the generated Java Card APDU adapter.
      * Returns a response length. Protocol failures are translated to
      * ISOException without allocating on the command path.
@@ -892,47 +961,23 @@ func buildJavaStreamDispatchSupport(data *javaTemplateData, methods []javaMethod
             byte[] responseBuffer,
             short responseOffset,
             short responseCapacity) {
+        short row = streamRow(ins);
+        if (row < (short) 0) {
+            ISOException.throwIt(SW_INS_NOT_SUPPORTED);
+            return (short) 0;
+        }
+        short limits = (short) (row * STREAM_LIMIT_COLUMNS);
+        byte directions = STREAM_DIRECTIONS[row];
+        byte operation = (byte) ((short) (ins & 0xFF) - (short) (STREAM_INS_BASE[row] & 0xFF));
         try {
-            switch (ins) {
-`)
-	operations := []string{
-		"OP_WRITE_OR_INVOKE",
-		"OP_CLOSE_WRITE",
-		"OP_GET_PENDING_READ_INFO",
-		"OP_READ_CHUNK",
-		"OP_CLOSE_READ",
-		"OP_ABORT",
-	}
-	suffixes := []string{
-		"WRITE_OR_INVOKE",
-		"CLOSE_WRITE",
-		"GET_PENDING_READ_INFO",
-		"READ_CHUNK",
-		"CLOSE_READ",
-		"ABORT",
-	}
-	methodID := byte(1)
-	for _, method := range methods {
-		if !method.IsStream {
-			continue
-		}
-		requestEnabled, requestMax, requestChunk := javaStreamFieldConfig(method.RequestStream)
-		responseEnabled, responseMax, responseChunk := javaStreamFieldConfig(method.ResponseStream)
-		for i := range operations {
-			fmt.Fprintf(&b, "                case %s_%s:\n", method.INSConstName, suffixes[i])
-			fmt.Fprintf(&b, "                    return streamSession.dispatch((byte) %d, %s.%s,\n", methodID, data.StreamEndpointName, operations[i])
-			fmt.Fprintf(&b, "                            %t, (short) %d, (short) %d,\n", requestEnabled, requestMax, requestChunk)
-			fmt.Fprintf(&b, "                            %t, (short) %d, (short) %d, (short) %d, this,\n",
-				responseEnabled, responseMax, responseChunk, method.ExactShortResponseLength)
-			b.WriteString("                            p1, p2, requestBuffer, requestOffset, requestLength,\n")
-			b.WriteString("                            responseBuffer, responseOffset, responseCapacity);\n")
-		}
-		methodID++
-	}
-	b.WriteString(`                default:
-                    ISOException.throwIt(SW_INS_NOT_SUPPORTED);
-                    return (short) 0;
-            }
+            return streamSession.dispatch((byte) (row + (short) 1), operation,
+                    (directions & (byte) 2) != (byte) 0,
+                    STREAM_LIMITS[limits], STREAM_LIMITS[(short) (limits + 1)],
+                    (directions & (byte) 1) != (byte) 0,
+                    STREAM_LIMITS[(short) (limits + 2)], STREAM_LIMITS[(short) (limits + 3)],
+                    STREAM_LIMITS[(short) (limits + 4)], this,
+                    p1, p2, requestBuffer, requestOffset, requestLength,
+                    responseBuffer, responseOffset, responseCapacity);
         } catch (`)
 	b.WriteString(data.StreamEndpointName)
 	b.WriteString(`.StreamStatusWordException failure) {
@@ -947,23 +992,41 @@ func buildJavaStreamDispatchSupport(data *javaTemplateData, methods []javaMethod
     }
 
     public final boolean isStreamInstruction(byte ins) {
-        switch (ins) {
-`)
-	for _, method := range methods {
-		if !method.IsStream {
-			continue
-		}
-		for _, suffix := range suffixes {
-			fmt.Fprintf(&b, "            case %s_%s:\n", method.INSConstName, suffix)
-		}
-	}
-	b.WriteString(`                return true;
-            default:
-                return false;
+        return streamRow(ins) >= (short) 0;
+    }
+
+    /** The streamed method an instruction belongs to, or -1 when it belongs to none. */
+    private static short streamRow(byte ins) {
+        short value = (short) (ins & 0xFF);
+        for (short row = (short) 0; row < (short) STREAM_INS_BASE.length; row++) {
+            short base = (short) (STREAM_INS_BASE[row] & 0xFF);
+            if (value >= base && value < (short) (base + STREAM_OPERATION_COUNT)) {
+                return row;
+            }
         }
+        return (short) -1;
     }
 `)
 	return b.String()
+}
+
+// writeJavaByteRows prints count entries, four per line, indented as a Java array
+// initialiser body and closed with the brace and semicolon.
+func writeJavaByteRows(b *strings.Builder, count int, entry func(int) string) {
+	const perLine = 4
+	for i := 0; i < count; i++ {
+		if i%perLine == 0 {
+			b.WriteString("        ")
+		}
+		b.WriteString(entry(i))
+		if i == count-1 {
+			b.WriteString(" };\n")
+		} else if (i+1)%perLine == 0 {
+			b.WriteString(",\n")
+		} else {
+			b.WriteString(", ")
+		}
+	}
 }
 
 func buildJavaStreamAbstractSupport(data *javaTemplateData, methods []javaMethodRender) string {

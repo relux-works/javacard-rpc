@@ -66,7 +66,8 @@ func TestGenerateJavaStreamSupport(t *testing.T) {
 		"INS_PROCESS_PACKET_ABORT",
 		"public final short dispatchStreamTo(",
 		"private final StreamDemoBoundedStreamRuntime streamSession",
-		"streamSession.dispatch((byte) 1",
+		"private static final byte[] STREAM_INS_BASE = {",
+		"streamSession.dispatch((byte) (row + (short) 1), operation,",
 		"public final void abortStreams(byte reason)",
 		"protected abstract short onProcessPacketStream(",
 	} {
@@ -159,9 +160,10 @@ func TestGenerateJavaUsesOneStreamSessionForAllStreamMethods(t *testing.T) {
 		t.Fatalf("generated skeleton owns %d stream sessions, want exactly one:\n%s", count, skeleton)
 	}
 	for _, fragment := range []string{
-		"streamSession.dispatch((byte) 1",
-		"streamSession.dispatch((byte) 2",
-		"streamSession.dispatch((byte) 3",
+		// processPacket 0x20, issueReport 0x30, secondPacket 0x40: method ids 1..3
+		// in ascending INS order.
+		"private static final byte[] STREAM_INS_BASE = {\n        (byte) 0x20, (byte) 0x30, (byte) 0x40 };",
+		"streamSession.dispatch((byte) (row + (short) 1), operation,",
 		"protected abstract short onIssueReportStream(",
 		"protected abstract short onProcessPacketStream(",
 		"protected abstract short onSecondPacketStream(",
@@ -169,6 +171,9 @@ func TestGenerateJavaUsesOneStreamSessionForAllStreamMethods(t *testing.T) {
 		if !strings.Contains(skeleton, fragment) {
 			t.Fatalf("generated multi-method skeleton is missing %q:\n%s", fragment, skeleton)
 		}
+	}
+	if count := strings.Count(skeleton, "streamSession.dispatch("); count != 1 {
+		t.Fatalf("generated skeleton has %d dispatch call sites, want exactly one:\n%s", count, skeleton)
 	}
 }
 
@@ -196,9 +201,15 @@ func TestGenerateJavaStreamPassesExactShortResponseLength(t *testing.T) {
 		t.Fatalf("GenerateJavaSkeleton returned error: %v", err)
 	}
 	skeleton := string(result.SkeletonSource)
-	fragment := "false, (short) 0, (short) 0, (short) 73, this,"
-	if count := strings.Count(skeleton, fragment); count != 6 {
-		t.Fatalf("fixed short response length must reach all six stream operations; got %d occurrences of %q:\n%s", count, fragment, skeleton)
+	// signTranscript is the third stream method by INS (0x20, 0x30, 0x40): its row
+	// is request-streamed only, so the response columns are zero and the last
+	// column carries the exact 1 + 72 byte response width.
+	fragment := "(short) 2048, (short) 192, (short) 0, (short) 0, (short) 73 };"
+	if count := strings.Count(skeleton, fragment); count != 1 {
+		t.Fatalf("fixed short response length must reach the dispatcher; got %d occurrences of %q:\n%s", count, fragment, skeleton)
+	}
+	if !strings.Contains(skeleton, "STREAM_LIMITS[(short) (limits + 4)], this,") {
+		t.Fatalf("the dispatcher must pass the exact short response length column:\n%s", skeleton)
 	}
 }
 
