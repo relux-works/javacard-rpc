@@ -333,7 +333,9 @@ func excerpt(source string, idx int) string {
 
 // Claim: StreamMemoryClearOnReset moves every piece of generated stream state —
 // the four arrays the skeleton injects into the runtime and the adapter's I/O
-// scratch — to CLEAR_ON_RESET, and leaves no CLEAR_ON_DESELECT allocation behind.
+// scratch — to CLEAR_ON_RESET, leaves no CLEAR_ON_DESELECT allocation behind,
+// and creates the one stream digest with externalAccess true; the default keeps
+// externalAccess false.
 // The default and the explicit clear_on_deselect generate the CLEAR_ON_DESELECT
 // allocations and no CLEAR_ON_RESET one outside the status-word exceptions, and
 // an unknown value is refused. Limit: this is a source check; that the arrays
@@ -373,6 +375,14 @@ func TestStreamMemoryOptionSelectsTheTransientEvent(t *testing.T) {
 		}
 		if !strings.Contains(adapter, "IO_CAPACITY, JCSystem."+want+")") || strings.Contains(adapter, "JCSystem."+other) {
 			t.Fatalf("%q: adapter I/O scratch is not %s only:\n%s", memory, want, adapter)
+		}
+		access := "false"
+		if want == "CLEAR_ON_RESET" {
+			access = "true"
+		}
+		digest := "MessageDigest.getInstance(MessageDigest.ALG_SHA_256, " + access + ")"
+		if !strings.Contains(skeleton, digest) || strings.Count(skeleton, "MessageDigest.getInstance(") != 1 {
+			t.Fatalf("%q: the stream digest is not the one %s", memory, digest)
 		}
 	}
 	check("", "CLEAR_ON_DESELECT", "CLEAR_ON_RESET")

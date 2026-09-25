@@ -374,6 +374,9 @@ type javaTemplateData struct {
 	// StreamTransientEvent is the JCSystem constant the stream state is allocated
 	// with: CLEAR_ON_DESELECT or CLEAR_ON_RESET (see StreamMemory).
 	StreamTransientEvent string
+	// StreamDigestExternalAccess is the externalAccess argument of the stream
+	// digest: "true" with StreamMemoryClearOnReset, "false" otherwise.
+	StreamDigestExternalAccess string
 }
 
 // StreamMemory selects the transient memory the generated stream state lives in.
@@ -385,9 +388,12 @@ const (
 	StreamMemoryClearOnDeselect StreamMemory = "clear_on_deselect"
 	// StreamMemoryClearOnReset keeps the state reachable while another application
 	// is selected, which is when a Security Domain forwards STORE DATA to the
-	// applet through org.globalplatform.Personalization.processData. The owning
-	// applet must still call the adapter's deselect() from its deselect callback;
-	// that is what empties the state on deselect, and a card reset empties it too.
+	// applet through org.globalplatform.Personalization.processData. The stream
+	// digest is then created with externalAccess true, because a MessageDigest
+	// created with false may not be used while its owner is not selected. The
+	// owning applet must still call the adapter's deselect() from its deselect
+	// callback; that is what empties the state on deselect, and a card reset
+	// empties it too.
 	StreamMemoryClearOnReset StreamMemory = "clear_on_reset"
 )
 
@@ -396,14 +402,14 @@ type JavaOptions struct {
 	StreamMemory StreamMemory
 }
 
-func (o JavaOptions) streamTransientEvent() (string, error) {
+func (o JavaOptions) streamTransientEvent() (event, digestExternalAccess string, err error) {
 	switch o.StreamMemory {
 	case "", StreamMemoryClearOnDeselect:
-		return "CLEAR_ON_DESELECT", nil
+		return "CLEAR_ON_DESELECT", "false", nil
 	case StreamMemoryClearOnReset:
-		return "CLEAR_ON_RESET", nil
+		return "CLEAR_ON_RESET", "true", nil
 	default:
-		return "", fmt.Errorf("unknown stream memory %q: expected %q or %q", o.StreamMemory, StreamMemoryClearOnDeselect, StreamMemoryClearOnReset)
+		return "", "", fmt.Errorf("unknown stream memory %q: expected %q or %q", o.StreamMemory, StreamMemoryClearOnDeselect, StreamMemoryClearOnReset)
 	}
 }
 
@@ -454,7 +460,7 @@ func GenerateJavaSkeleton(s *Schema, packageName string) (*JavaGenerationResult,
 
 // GenerateJavaSkeletonWithOptions is GenerateJavaSkeleton with explicit generation options.
 func GenerateJavaSkeletonWithOptions(s *Schema, packageName string, options JavaOptions) (*JavaGenerationResult, error) {
-	streamEvent, err := options.streamTransientEvent()
+	streamEvent, streamDigestExternalAccess, err := options.streamTransientEvent()
 	if err != nil {
 		return nil, err
 	}
@@ -488,6 +494,8 @@ func GenerateJavaSkeletonWithOptions(s *Schema, packageName string, options Java
 		StreamRuntimeName:      toPascal(s.Applet.Name) + "BoundedStreamRuntime",
 		StreamAPDUAdapterName:  toPascal(s.Applet.Name) + "StreamAPDUAdapter",
 		StreamTransientEvent:   streamEvent,
+
+		StreamDigestExternalAccess: streamDigestExternalAccess,
 	}
 
 	// Render transport interface

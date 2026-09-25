@@ -857,8 +857,8 @@ func buildJavaStreamConstructor(data *javaTemplateData) string {
         this.transport = transport;
         this.empty = new byte[0];
         this.sharedFailure = new StatusWordException(SW_INS_NOT_SUPPORTED);
-        this.streamSha256 = MessageDigest.getInstance(MessageDigest.ALG_SHA_256, false);
-        this.streamHandlerFailure = new %s.StreamStatusWordException((short) 0x6985);
+        this.streamSha256 = MessageDigest.getInstance(MessageDigest.ALG_SHA_256, %[6]s);
+        this.streamHandlerFailure = new %[3]s.StreamStatusWordException((short) 0x6985);
         // Every mutable word of the stream session lives in %[5]s
         // transient memory: workspace, digest scratch, the scalar state machine
         // and the handler reference. Nothing persistent is written per command.
@@ -872,7 +872,7 @@ func buildJavaStreamConstructor(data *javaTemplateData) string {
                 JCSystem.makeTransientObjectArray(
                         STREAM_HANDLER_SLOT_COUNT, JCSystem.%[5]s),
                 this);
-    }`, data.ClassName, data.TransportInterfaceName, data.StreamEndpointName, data.StreamRuntimeName, data.StreamTransientEvent)
+    }`, data.ClassName, data.TransportInterfaceName, data.StreamEndpointName, data.StreamRuntimeName, data.StreamTransientEvent, data.StreamDigestExternalAccess)
 }
 
 func buildJavaStreamDispatchSupport(data *javaTemplateData, methods []javaMethodRender) string {

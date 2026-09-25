@@ -100,7 +100,9 @@ The generated client also rejects a concurrent streamed call locally with
 
 `jcrpc-gen --stream-memory clear_on_reset` allocates the same stream state — the
 workspace, digest scratch, scalar array, handler slot and the adapter's I/O
-scratch — as `CLEAR_ON_RESET` instead. Use it when the applet must run a stream
+scratch — as `CLEAR_ON_RESET` instead, and creates the stream digest with
+`externalAccess` true, since a `MessageDigest` created with false may not be used
+while its owner is not selected. Use it when the applet must run a stream
 while another application is selected: a Security Domain forwarding STORE DATA
 through `org.globalplatform.Personalization.processData` is that case, and
 `CLEAR_ON_DESELECT` memory is out of reach there. The applet must still call the
