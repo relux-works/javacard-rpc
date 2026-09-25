@@ -98,6 +98,16 @@ the authoritative protocol failure or coroutine cancellation.
 The generated client also rejects a concurrent streamed call locally with
 `StreamBusy`, without sending an APDU that could abort the active call.
 
+`jcrpc-gen --stream-memory clear_on_reset` allocates the same stream state — the
+workspace, digest scratch, scalar array, handler slot and the adapter's I/O
+scratch — as `CLEAR_ON_RESET` instead. Use it when the applet must run a stream
+while another application is selected: a Security Domain forwarding STORE DATA
+through `org.globalplatform.Personalization.processData` is that case, and
+`CLEAR_ON_DESELECT` memory is out of reach there. The applet must still call the
+adapter's `deselect()` from its deselect callback; that is what empties the state
+on deselect, and a card reset empties it too. The default stays
+`clear_on_deselect`, and the wire protocol is the same either way.
+
 Generated reusable status-word exceptions keep their changing status in a
 one-slot `CLEAR_ON_RESET` transient `short[]`. The exception object itself is
 still preconstructed once per skeleton/runtime, so alternating error statuses

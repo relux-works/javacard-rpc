@@ -33,6 +33,7 @@ type cliOptions struct {
 	help          bool
 
 	simulatorDependency string
+	streamMemory        string
 }
 
 // defaultSimulatorDependency is the Maven coordinate of the Java Card simulator
@@ -73,6 +74,7 @@ func run(args []string, stderr io.Writer) int {
 	fs.BoolVar(&opts.help, "help", false, "")
 	fs.BoolVar(&opts.help, "h", false, "")
 	fs.StringVar(&opts.simulatorDependency, "simulator-dependency", defaultSimulatorDependency, "")
+	fs.StringVar(&opts.streamMemory, "stream-memory", string(codegen.StreamMemoryClearOnDeselect), "")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -164,7 +166,8 @@ func run(args []string, stderr io.Writer) int {
 
 	if generateJava {
 		verbosef("generating java package (package=%s)", javaPackage)
-		javaResult, err := codegen.GenerateJavaSkeleton(schema, javaPackage)
+		javaResult, err := codegen.GenerateJavaSkeletonWithOptions(schema, javaPackage,
+			codegen.JavaOptions{StreamMemory: codegen.StreamMemory(strings.TrimSpace(opts.streamMemory))})
 		if err != nil {
 			fmt.Fprintf(stderr, "generate java skeleton: %v\n", err)
 			return exitCodeGeneration
@@ -420,6 +423,11 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  --simulator-dependency string")
 	fmt.Fprintln(w, "                        Maven coordinate of the Java Card simulator the generated")
 	fmt.Fprintln(w, "                        stream server compiles against (default \""+defaultSimulatorDependency+"\")")
+	fmt.Fprintln(w, "  --stream-memory string")
+	fmt.Fprintln(w, "                        Transient memory of the generated Java stream state:")
+	fmt.Fprintln(w, "                        clear_on_deselect (default) or clear_on_reset. Use")
+	fmt.Fprintln(w, "                        clear_on_reset when a Security Domain forwards STORE DATA")
+	fmt.Fprintln(w, "                        to the applet while another application is selected")
 	fmt.Fprintln(w, "  --validate-only       Parse + validate only, no generation")
 	fmt.Fprintln(w, "  --verbose             Print progress to stderr")
 	fmt.Fprintln(w, "  -h, --help            Show help")

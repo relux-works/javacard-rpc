@@ -371,6 +371,40 @@ type javaTemplateData struct {
 	StreamEndpointName     string
 	StreamRuntimeName      string
 	StreamAPDUAdapterName  string
+	// StreamTransientEvent is the JCSystem constant the stream state is allocated
+	// with: CLEAR_ON_DESELECT or CLEAR_ON_RESET (see StreamMemory).
+	StreamTransientEvent string
+}
+
+// StreamMemory selects the transient memory the generated stream state lives in.
+type StreamMemory string
+
+const (
+	// StreamMemoryClearOnDeselect is the default. The state is reachable only while
+	// the applet is the selected one.
+	StreamMemoryClearOnDeselect StreamMemory = "clear_on_deselect"
+	// StreamMemoryClearOnReset keeps the state reachable while another application
+	// is selected, which is when a Security Domain forwards STORE DATA to the
+	// applet through org.globalplatform.Personalization.processData. The owning
+	// applet must still call the adapter's deselect() from its deselect callback;
+	// that is what empties the state on deselect, and a card reset empties it too.
+	StreamMemoryClearOnReset StreamMemory = "clear_on_reset"
+)
+
+// JavaOptions are generation choices that do not change the wire contract.
+type JavaOptions struct {
+	StreamMemory StreamMemory
+}
+
+func (o JavaOptions) streamTransientEvent() (string, error) {
+	switch o.StreamMemory {
+	case "", StreamMemoryClearOnDeselect:
+		return "CLEAR_ON_DESELECT", nil
+	case StreamMemoryClearOnReset:
+		return "CLEAR_ON_RESET", nil
+	default:
+		return "", fmt.Errorf("unknown stream memory %q: expected %q or %q", o.StreamMemory, StreamMemoryClearOnDeselect, StreamMemoryClearOnReset)
+	}
 }
 
 type javaMethodRender struct {
@@ -412,8 +446,18 @@ type JavaGenerationResult struct {
 	StreamAPDUAdapterName   string // e.g. "CounterStreamAPDUAdapter"
 }
 
-// GenerateJavaSkeleton renders a Java Card abstract applet skeleton from a validated schema.
+// GenerateJavaSkeleton renders a Java Card abstract applet skeleton from a validated schema,
+// with the default options.
 func GenerateJavaSkeleton(s *Schema, packageName string) (*JavaGenerationResult, error) {
+	return GenerateJavaSkeletonWithOptions(s, packageName, JavaOptions{})
+}
+
+// GenerateJavaSkeletonWithOptions is GenerateJavaSkeleton with explicit generation options.
+func GenerateJavaSkeletonWithOptions(s *Schema, packageName string, options JavaOptions) (*JavaGenerationResult, error) {
+	streamEvent, err := options.streamTransientEvent()
+	if err != nil {
+		return nil, err
+	}
 	if s == nil {
 		return nil, fmt.Errorf("schema is nil")
 	}
@@ -443,6 +487,7 @@ func GenerateJavaSkeleton(s *Schema, packageName string) (*JavaGenerationResult,
 		StreamEndpointName:     toPascal(s.Applet.Name) + "StreamEndpoint",
 		StreamRuntimeName:      toPascal(s.Applet.Name) + "BoundedStreamRuntime",
 		StreamAPDUAdapterName:  toPascal(s.Applet.Name) + "StreamAPDUAdapter",
+		StreamTransientEvent:   streamEvent,
 	}
 
 	// Render transport interface

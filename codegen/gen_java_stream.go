@@ -110,7 +110,7 @@ const javaStreamRuntimeTemplate = `package {{.PackageName}};
 /**
  * Generated single-owner, bounded, half-duplex stream state machine.
  *
- * The skeleton constructs exactly one instance and injects CLEAR_ON_DESELECT
+ * The skeleton constructs exactly one instance and injects {{.StreamTransientEvent}}
  * arrays for everything mutable: the byte workspace, the digest scratch, the
  * short[] scalar state machine and the one-slot handler reference. This class
  * declares no mutable field of its own, so a WRITE chunk, a result or an abort
@@ -136,7 +136,7 @@ public final class {{.StreamRuntimeName}} implements {{.StreamEndpointName}} {
     private static final short DESCRIPTOR_LENGTH = (short) 35;
     private static final short SHORT_RESPONSE_CAPACITY = (short) 255;
 
-    // Layout of the CLEAR_ON_DESELECT short[] scalar array. The all-zero
+    // Layout of the {{.StreamTransientEvent}} short[] scalar array. The all-zero
     // array is the empty state: STATE_EMPTY is 0, booleans are 0/1 and every
     // length or index is only read after begin() has written it.
     private static final short IDX_STATE                      = (short) 0;
@@ -618,7 +618,7 @@ public final class {{.StreamRuntimeName}} implements {{.StreamEndpointName}} {
 
     /**
      * Return to the empty state. Writes only the injected transient arrays,
-     * so the result is bit-identical to what CLEAR_ON_DESELECT produces.
+     * so the result is bit-identical to a freshly cleared transient array.
      */
     private void clearAll() {
         wipe(workspace);
@@ -664,7 +664,7 @@ public final class {{.StreamAPDUAdapterName}} {
     public {{.StreamAPDUAdapterName}}({{.ClassName}} logic) {
         this.logic = logic;
         this.ioScratch = JCSystem.makeTransientByteArray(
-                IO_CAPACITY, JCSystem.CLEAR_ON_DESELECT);
+                IO_CAPACITY, JCSystem.{{.StreamTransientEvent}});
     }
 
     public boolean processIfStream(APDU apdu) {
@@ -859,20 +859,20 @@ func buildJavaStreamConstructor(data *javaTemplateData) string {
         this.sharedFailure = new StatusWordException(SW_INS_NOT_SUPPORTED);
         this.streamSha256 = MessageDigest.getInstance(MessageDigest.ALG_SHA_256, false);
         this.streamHandlerFailure = new %s.StreamStatusWordException((short) 0x6985);
-        // Every mutable word of the stream session lives in CLEAR_ON_DESELECT
+        // Every mutable word of the stream session lives in %[5]s
         // transient memory: workspace, digest scratch, the scalar state machine
         // and the handler reference. Nothing persistent is written per command.
-        this.streamSession = new %s(
+        this.streamSession = new %[4]s(
                 JCSystem.makeTransientByteArray(
-                        STREAM_WORKSPACE_LENGTH, JCSystem.CLEAR_ON_DESELECT),
+                        STREAM_WORKSPACE_LENGTH, JCSystem.%[5]s),
                 JCSystem.makeTransientByteArray(
-                        STREAM_DIGEST_LENGTH, JCSystem.CLEAR_ON_DESELECT),
+                        STREAM_DIGEST_LENGTH, JCSystem.%[5]s),
                 JCSystem.makeTransientShortArray(
-                        STREAM_SCALAR_COUNT, JCSystem.CLEAR_ON_DESELECT),
+                        STREAM_SCALAR_COUNT, JCSystem.%[5]s),
                 JCSystem.makeTransientObjectArray(
-                        STREAM_HANDLER_SLOT_COUNT, JCSystem.CLEAR_ON_DESELECT),
+                        STREAM_HANDLER_SLOT_COUNT, JCSystem.%[5]s),
                 this);
-    }`, data.ClassName, data.TransportInterfaceName, data.StreamEndpointName, data.StreamRuntimeName)
+    }`, data.ClassName, data.TransportInterfaceName, data.StreamEndpointName, data.StreamRuntimeName, data.StreamTransientEvent)
 }
 
 func buildJavaStreamDispatchSupport(data *javaTemplateData, methods []javaMethodRender) string {

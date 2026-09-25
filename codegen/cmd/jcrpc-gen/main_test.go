@@ -567,3 +567,44 @@ func lineDiff(want, got []byte) string {
 
 	return b.String()
 }
+
+// Proves that --stream-memory clear_on_reset reaches the generated skeleton and
+// adapter, and that an unknown value is refused with the generation exit code
+// before any Java file is written.
+func TestRunStreamMemoryFlag(t *testing.T) {
+	t.Parallel()
+
+	streamSchema := filepath.Join("..", "..", "testdata", "stream.toml")
+	outDir := t.TempDir()
+	var stderr bytes.Buffer
+	code := run([]string{
+		"--java", "io.jcrpc.streamdemo.server",
+		"--stream-memory", "clear_on_reset",
+		"--out-dir", outDir,
+		streamSchema,
+	}, &stderr)
+	if code != exitCodeSuccess {
+		t.Fatalf("run returned exit code %d, stderr:\n%s", code, stderr.String())
+	}
+	javaSrcDir := filepath.Join(outDir, "streamdemo-server-javacard",
+		"src", "main", "java", "io", "jcrpc", "streamdemo", "server")
+	assertFileContains(t, filepath.Join(javaSrcDir, "StreamDemoSkeleton.java"),
+		"STREAM_WORKSPACE_LENGTH, JCSystem.CLEAR_ON_RESET)")
+	assertFileContains(t, filepath.Join(javaSrcDir, "StreamDemoStreamAPDUAdapter.java"),
+		"IO_CAPACITY, JCSystem.CLEAR_ON_RESET)")
+
+	refusedDir := t.TempDir()
+	stderr.Reset()
+	code = run([]string{
+		"--java", "io.jcrpc.streamdemo.server",
+		"--stream-memory", "persistent",
+		"--out-dir", refusedDir,
+		streamSchema,
+	}, &stderr)
+	if code != exitCodeGeneration || !strings.Contains(stderr.String(), "unknown stream memory") {
+		t.Fatalf("an unknown --stream-memory was not refused: code %d, stderr:\n%s", code, stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(refusedDir, "streamdemo-server-javacard")); !os.IsNotExist(err) {
+		t.Fatalf("a refused --stream-memory still wrote output: %v", err)
+	}
+}

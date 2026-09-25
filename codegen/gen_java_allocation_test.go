@@ -1,6 +1,7 @@
 package codegen
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -328,4 +329,68 @@ func excerpt(source string, idx int) string {
 		end = len(source)
 	}
 	return source[start:end]
+}
+
+// Claim: StreamMemoryClearOnReset moves every piece of generated stream state —
+// the four arrays the skeleton injects into the runtime and the adapter's I/O
+// scratch — to CLEAR_ON_RESET, and leaves no CLEAR_ON_DESELECT allocation behind.
+// The default and the explicit clear_on_deselect generate the CLEAR_ON_DESELECT
+// allocations and no CLEAR_ON_RESET one outside the status-word exceptions, and
+// an unknown value is refused. Limit: this is a source check; that the arrays
+// are reachable from processData while another applet is selected is a card
+// property the generator cannot measure.
+func TestStreamMemoryOptionSelectsTheTransientEvent(t *testing.T) {
+	s, err := ParseFile(filepath.Join("testdata", "stream.toml"))
+	if err != nil {
+		t.Fatalf("ParseFile returned error: %v", err)
+	}
+	allocations := []string{
+		"STREAM_WORKSPACE_LENGTH, JCSystem.%s)",
+		"STREAM_DIGEST_LENGTH, JCSystem.%s)",
+		"STREAM_SCALAR_COUNT, JCSystem.%s)",
+		"STREAM_HANDLER_SLOT_COUNT, JCSystem.%s)",
+	}
+	generate := func(memory StreamMemory) *JavaGenerationResult {
+		t.Helper()
+		result, err := GenerateJavaSkeletonWithOptions(s, "io.jcrpc.streamdemo.server", JavaOptions{StreamMemory: memory})
+		if err != nil {
+			t.Fatalf("generate with %q: %v", memory, err)
+		}
+		return result
+	}
+	check := func(memory StreamMemory, want, other string) {
+		t.Helper()
+		result := generate(memory)
+		skeleton := string(result.SkeletonSource)
+		adapter := string(result.StreamAPDUAdapterSource)
+		for _, format := range allocations {
+			if !strings.Contains(skeleton, fmt.Sprintf(format, want)) {
+				t.Fatalf("%q: skeleton does not allocate %q", memory, fmt.Sprintf(format, want))
+			}
+			if strings.Contains(skeleton, fmt.Sprintf(format, other)) {
+				t.Fatalf("%q: skeleton still allocates %q", memory, fmt.Sprintf(format, other))
+			}
+		}
+		if !strings.Contains(adapter, "IO_CAPACITY, JCSystem."+want+")") || strings.Contains(adapter, "JCSystem."+other) {
+			t.Fatalf("%q: adapter I/O scratch is not %s only:\n%s", memory, want, adapter)
+		}
+	}
+	check("", "CLEAR_ON_DESELECT", "CLEAR_ON_RESET")
+	check(StreamMemoryClearOnDeselect, "CLEAR_ON_DESELECT", "CLEAR_ON_RESET")
+	check(StreamMemoryClearOnReset, "CLEAR_ON_RESET", "CLEAR_ON_DESELECT")
+
+	defaultResult, err := GenerateJavaSkeleton(s, "io.jcrpc.streamdemo.server")
+	if err != nil {
+		t.Fatal(err)
+	}
+	explicit := generate(StreamMemoryClearOnDeselect)
+	if !bytes.Equal(defaultResult.SkeletonSource, explicit.SkeletonSource) ||
+		!bytes.Equal(defaultResult.StreamAPDUAdapterSource, explicit.StreamAPDUAdapterSource) ||
+		!bytes.Equal(defaultResult.StreamRuntimeSource, explicit.StreamRuntimeSource) {
+		t.Fatal("GenerateJavaSkeleton and an explicit clear_on_deselect generate different sources")
+	}
+	if _, err := GenerateJavaSkeletonWithOptions(s, "io.jcrpc.streamdemo.server", JavaOptions{StreamMemory: "clear_on_select"}); err == nil ||
+		!strings.Contains(err.Error(), "unknown stream memory") {
+		t.Fatalf("an unknown stream memory was not refused: %v", err)
+	}
 }
