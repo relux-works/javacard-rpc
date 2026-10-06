@@ -53,7 +53,12 @@ The OS guard allows local build-tool IPC and denies remote dependency access.
 On macOS it uses `sandbox-exec`; on Linux it uses a dedicated network namespace
 (`sudo -n unshare --net`, with loopback enabled through `ip` and the build
 returned to the caller's UID/GID through `setpriv`). Unsupported hosts
-refuse. The control actually attempts an HTTPS Maven dependency fetch and requires
+refuse. Linux local IPC is between processes launched inside that same namespace;
+it does not include a listener in the host namespace. The positive control starts
+its listener and curl child inside the guard on Linux. macOS retains a real
+host-loopback listener control, and a separate child-listener control exercises
+the helper on both platforms. The control actually attempts an HTTPS Maven
+dependency fetch and requires
 curl's connection refusal; a missing curl or broken sandbox is a failed control.
 The valid prepared consumer must also build/test successfully under that guard.
 Gradle `--offline` and Swift automatic-resolution disabling supplement the OS
@@ -126,6 +131,7 @@ skipped. Public fetch provenance is not evidence of executed Linux CI.
 | `jcrpc-compat --mode jvm --root .temp/consumer` | Native Gradle builds and tests with includeBuild | Native `build/` directories |
 | `jcrpc-compat --mode swift --root .temp/consumer` | Runtime and path-consumer Swift Testing | Native `.build/` directories |
 | `go -C codegen test ./cmd/jcrpc-compat -run '^TestOfflineGuardRejectsDependencyAccess$' -count=1 -v` | Actual dependency network-access rejection | Named Go test output |
+| `go -C codegen test ./cmd/jcrpc-compat -run '^TestOfflineGuardAllowsChildLocalIPC$' -count=1 -v` | Real listener and curl child inside the OS guard | Named Go test output |
 | `.temp/jcrpc-compat --mode offline -- COMMAND...` | OS network enforcement for prepared commands | Command output, real exit status |
 | `.temp/jcrpc-compat --mode toolchain --root .temp/toolchain` | Public digest-checked native inputs | `.temp/toolchain/` |
 
