@@ -51,9 +51,17 @@ behavioral JVM dispatch harness. Attestation regressions invoke the public
 harness with bounded Go fixtures; those fixtures isolate receipt classification
 and do not substitute for the real parity/JVM suites run by the catalog.
 
-For the focused revision-two rework, parity remains explicitly against v0.4.4.
-Integration of the separately scoped v0.4.5 changes and a newer parity baseline
-belongs to a later follow-up before API/backend releases.
+The revision-two v0.4.4 parity evidence is historical. Current parity uses signed
+v0.4.5 (tag object `da77d07af5dc6866437d3db1004fdeda9738d59c`,
+commit `cfed4182356a4f4609c88f58924aac79c05ae5b6`,
+tree `cda7d28d89cea229af2603b79e850a9eb1e862d5`).
+The independent model carries stream workspace policy. Lifecycle and simulator
+coordinates must remain represented in the next API freeze, including target-owned
+build manifests. Parser and validator
+remain in the facade. Default, explicit transient and persistent outputs are
+compared exactly, including both lifecycle modes and CLI refusal controls.
+This import preserves the accepted composition and harness checkpoint; API
+freeze and backend releases follow in separate leaves.
 
 Source builds require the sibling `pluginapi` directory through the local
 `replace` directive. Publishing the independent module and pinning released

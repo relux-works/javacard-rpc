@@ -429,16 +429,17 @@ conversion and physical-card behavior. Allocation accounting includes all
 generated arrays (including static tables and exception status); it excludes
 object headers, reference widths and digest/provider/JCRE allocations.
 
+
 The generator now composes three compile-time plugins through the independent
 `pluginapi` Go module. TOML parsing, validation, CLI packaging, and compatible
-Go entry points remain in `codegen`; rendering templates are unchanged. Both
+Go entry points remain in `codegen`; rendering templates follow signed v0.4.5. Both
 modules live in this repository for phase one. See the
 [composition contract](.spec/plugin-composition.md) for scope and parity bounds.
 
 | Tool | Purpose | Command | Output |
 | --- | --- | --- | --- |
 | Go | Build codegen and test both Go modules, parser, generators, JVM harnesses, and CLI | `make test-codegen`; `cd pluginapi && go vet ./...`; `cd codegen && go vet ./...` | Go test cache; task-local smoke files use `.temp/` |
-| `jcrpc-parity` (Go) | Compare independently built CLI binaries, all example IDLs, fixtures, and a consumer IDL | `cd codegen && go run ./cmd/jcrpc-parity --baseline /abs/old-cli --candidate /abs/new-cli --repo .. --consumer /abs/consumer.toml --out ../.temp/parity.json` (add `--plant-byte-change` for expected exit 1) | Explicit JSON evidence under `.temp/`; temporary generated trees are removed |
+| `jcrpc-parity` (Go) | Compare independently built CLI binaries, all example IDLs, fixtures, and a consumer IDL | `cd codegen && go run ./cmd/jcrpc-parity --baseline /abs/v0.4.5-cli --candidate /abs/new-cli --repo .. --consumer /abs/consumer.toml --out ../.temp/parity.json` (add `--plant-byte-change` for expected exit 1) | Explicit JSON evidence under `.temp/`; temporary generated trees are removed |
 | `jcrpc-mutants` (Go) | Prove bounded refusal/parity weakenings reach intended assertions after passing unmodified controls | `cd codegen && go run ./cmd/jcrpc-mutants --repo .. --out ../.temp/mutants` (fresh output directory; add `--only NAME` for one catalog entry) | Disposable module/example TOML copies, per-mutant control and mutation JSON test logs, and `mutants.md` under `.temp/` |
 | Swift + Xcode SDK | Compile the generated Swift client for the supported iOS simulator target | `make generate`; `cd examples/counter/generated/counter-client-swift && swift build --triple arm64-apple-ios15.0-simulator --sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)"` | Generated package `.build/` |
 | Bash + `shasum` | Validate the Gradle-published counter bridge classpath and build checksums before Java launch | `examples/counter/run-bridge.sh [--port 9025]`; `JCRPC_SKIP_BUILD=1 examples/counter/run-bridge.sh` after builds | `bridge/build/launch/classpath.txt`, `checksums.sha256`; named refusal on stderr, exit 2 |

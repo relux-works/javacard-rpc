@@ -15,10 +15,17 @@ import (
 func TestWorkspacePolicyNarrowingMutants(t *testing.T) {
 	for _, tc := range []struct{ name, file, pkg, test, claim string }{
 		{"validator-ram", "validator.go", "./cmd/jcrpc-gen", "TestRunStreamWorkspacePolicy/ram", "refusal: 2 generate java skeleton: unknown stream workspace \"ram\""},
-		{"generator-ram", "gen_java.go", ".", "TestStreamWorkspacePolicy", "invalid \"ram\":"},
+		{"generator-ram", "internal/render/gen_java.go", ".", "TestStreamWorkspacePolicy", "invalid \"ram\":"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			root := t.TempDir()
+			fixture := t.TempDir()
+			root := filepath.Join(fixture, "codegen")
+			if e := os.Mkdir(root, 0755); e != nil {
+				t.Fatal(e)
+			}
+			if e := os.CopyFS(filepath.Join(fixture, "pluginapi"), os.DirFS("../pluginapi")); e != nil {
+				t.Fatal(e)
+			}
 			e := filepath.WalkDir(".", func(path string, d fs.DirEntry, e error) error {
 				if e != nil {
 					return e

@@ -10,7 +10,7 @@ import (
 )
 
 // Invoke both actual CLIs and compare every file in each output package. The
-// only default exception is the precisely scoped adapter CLA predicate block.
+// default baseline is signed v0.4.5, with no byte exceptions.
 // Opt-in changes only Java skeleton/runtime; Kotlin and ordinary Swift output
 // remain byte-identical, and streamed Swift retains its existing refusal.
 func TestCLIOutputCompatibility(t *testing.T) {
@@ -64,20 +64,6 @@ func TestCLIOutputCompatibility(t *testing.T) {
 					count++
 					if optin && (strings.HasSuffix(rel, "Skeleton.java") || strings.HasSuffix(rel, "BoundedStreamRuntime.java")) {
 						return nil
-					}
-					if !optin && strings.HasSuffix(rel, "StreamAPDUAdapter.java") {
-						startA := bytes.Index(a, []byte("        if (apduBuffer[ISO7816.OFFSET_CLA]"))
-						startB := bytes.Index(b, []byte("        byte cla = apduBuffer[ISO7816.OFFSET_CLA]"))
-						if startA < 0 || startB < 0 {
-							t.Fatal("CLA exception start boundaries absent")
-						}
-						endA := bytes.Index(a[startA:], []byte("        try {")) + startA
-						endB := bytes.Index(b[startB:], []byte("        try {")) + startB
-						if startA < 0 || startB < 0 || endA < startA || endB < startB {
-							t.Fatal("CLA exception boundaries absent")
-						}
-						a = append(append([]byte{}, a[:startA]...), a[endA:]...)
-						b = append(append([]byte{}, b[:startB]...), b[endB:]...)
 					}
 					if !bytes.Equal(a, b) {
 						t.Errorf("unexpected byte delta: %s", rel)

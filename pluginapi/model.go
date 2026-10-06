@@ -14,6 +14,8 @@ type Applet struct {
 	Version     string
 	AID         string
 	CLA         byte
+	// StreamWorkspace selects bulk storage only; empty means transient.
+	StreamWorkspace string
 }
 
 // Method describes a callable applet instruction.

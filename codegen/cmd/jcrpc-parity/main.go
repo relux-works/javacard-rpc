@@ -24,6 +24,7 @@ type invocation struct {
 	Files  map[string]string
 }
 type comparison struct {
+	Policy      string
 	Input       string
 	InputSHA256 string
 	Baseline    invocation
@@ -40,7 +41,7 @@ func main() { os.Exit(run(os.Args[1:])) }
 
 func run(args []string) int {
 	flags := flag.NewFlagSet("jcrpc-parity", flag.ContinueOnError)
-	old := flags.String("baseline", "", "independently built baseline CLI")
+	old := flags.String("baseline", "", "independently built signed v0.4.5 baseline CLI")
 	new := flags.String("candidate", "", "candidate CLI")
 	repo := flags.String("repo", "..", "facade repository root")
 	consumer := flags.String("consumer", "", "consumer IDL (required)")
@@ -204,73 +205,107 @@ func verify(old, new, repo, consumer string, plant bool, r *report) error {
 	}
 	defer os.RemoveAll(root)
 	selectors := [][]string{{"--java", "io.parity.server"}, {"--kotlin", "io.parity.client"}, {"--swift", "ParityClient"}, {"--all"}, {"--java", "io.parity.server", "--kotlin", "io.parity.client"}, {"--all", "--java", "io.parity.server", "--kotlin", "io.parity.client", "--swift", "ParityClient"}}
-	for _, input := range inputs {
-		input, err = filepath.Abs(input)
-		if err != nil {
-			return err
-		}
-		digest, err := hashFile(input)
-		if err != nil {
-			return err
-		}
-		cases := [][]string{{"--validate-only"}, {}, {"--help"}, {"-h"}}
-		for _, selector := range selectors {
-			for _, memory := range []string{"", "clear_on_deselect", "clear_on_reset"} {
-				for _, sim := range []string{"", "com.klinec:jcardsim:3.0.5.9", "works.relux:jcardsim:3.0.5.9-relux.1"} {
-					args := append([]string{"--verbose"}, selector...)
-					if memory != "" {
-						args = append(args, "--stream-memory", memory)
-					}
-					if sim != "" {
-						args = append(args, "--simulator-dependency", sim)
-					}
-					cases = append(cases, args)
-				}
-			}
-		}
-		for _, args := range cases {
-			args = append(append([]string{}, args...), input)
-			idx := len(r.Comparisons)
-			oldDir := filepath.Join(root, fmt.Sprintf("%03d-old", idx))
-			newDir := filepath.Join(root, fmt.Sprintf("%03d-new", idx))
-			a, err := invoke(old, oldDir, args)
+	for _, source := range inputs {
+		for _, policy := range []string{"", "transient", "persistent", "ram", "Persistent"} {
+			input := source
+			input, err = filepath.Abs(input)
 			if err != nil {
 				return err
 			}
-			b, err := invoke(new, newDir, args)
+			digest, err := hashFile(input)
 			if err != nil {
 				return err
 			}
-			if plant && len(b.Files) > 0 {
-				keys := make([]string, 0, len(b.Files))
-				for k := range b.Files {
-					keys = append(keys, k)
+			cases := [][]string{{"--validate-only"}, {}, {"--help"}, {"-h"}}
+			if policy != "" {
+				raw, readErr := os.ReadFile(input)
+				if readErr != nil {
+					return readErr
 				}
-				sort.Strings(keys)
-				path := filepath.Join(newDir, keys[0])
-				data, err := os.ReadFile(path)
+				if bytes.Count(raw, []byte("[applet]")) != 1 {
+					return fmt.Errorf("policy variant requires one applet table: %s", input)
+				}
+				raw = bytes.Replace(raw, []byte("[applet]"), []byte("[applet]\nstream_workspace = \""+policy+"\""), 1)
+				input = filepath.Join(root, fmt.Sprintf("policy-%d-%s.toml", len(r.Comparisons), policy))
+				if err := os.WriteFile(input, raw, 0644); err != nil {
+					return err
+				}
+				digest, err = hashFile(input)
 				if err != nil {
 					return err
 				}
-				if len(data) == 0 {
-					return fmt.Errorf("plant needs nonempty output")
+				cases = nil
+			} else {
+				cases = append(cases, []string{"--java", "io.parity.server", "--stream-memory", "invalid"}, []string{"--java", "io.parity.server", "--simulator-dependency", "bad:coordinate"})
+			}
+
+			for _, selector := range selectors {
+				if policy == "ram" || policy == "Persistent" {
+					cases = append(cases, selector)
+					continue
 				}
-				data[0] ^= 1
-				if err := os.WriteFile(path, data, 0644); err != nil {
-					return err
+				for _, memory := range []string{"", "clear_on_deselect", "clear_on_reset"} {
+					for _, sim := range []string{"", "com.klinec:jcardsim:3.0.5.9", "works.relux:jcardsim:3.0.5.9-relux.1"} {
+						args := append([]string{"--verbose"}, selector...)
+						if memory != "" {
+							args = append(args, "--stream-memory", memory)
+						}
+						if sim != "" {
+							args = append(args, "--simulator-dependency", sim)
+						}
+						cases = append(cases, args)
+					}
 				}
-				b.Files, err = inventory(newDir)
+			}
+			for _, args := range cases {
+				args = append(append([]string{}, args...), input)
+				idx := len(r.Comparisons)
+				oldDir := filepath.Join(root, fmt.Sprintf("%03d-old", idx))
+				newDir := filepath.Join(root, fmt.Sprintf("%03d-new", idx))
+				a, err := invoke(old, oldDir, args)
 				if err != nil {
 					return err
 				}
-				plant = false
-			}
-			r.Comparisons = append(r.Comparisons, comparison{Input: input, InputSHA256: digest, Baseline: a, Candidate: b})
-			if a.Exit != b.Exit || a.Stdout != b.Stdout || a.Stderr != b.Stderr {
-				return fmt.Errorf("CLI behavior drift: %s %v", input, args)
-			}
-			if err := compareFiles(a.Files, b.Files); err != nil {
-				return fmt.Errorf("%s %v: %w", input, args, err)
+				b, err := invoke(new, newDir, args)
+				if err != nil {
+					return err
+				}
+				if policy == "ram" || policy == "Persistent" {
+					if a.Exit != 1 || b.Exit != 1 || len(a.Files) != 0 || len(b.Files) != 0 || !strings.Contains(a.Stderr, "applet.stream_workspace") || !strings.Contains(b.Stderr, "applet.stream_workspace") {
+						return fmt.Errorf("invalid workspace policy admitted: %s", policy)
+					}
+				}
+				if plant && len(b.Files) > 0 {
+					keys := make([]string, 0, len(b.Files))
+					for k := range b.Files {
+						keys = append(keys, k)
+					}
+					sort.Strings(keys)
+					path := filepath.Join(newDir, keys[0])
+					data, err := os.ReadFile(path)
+					if err != nil {
+						return err
+					}
+					if len(data) == 0 {
+						return fmt.Errorf("plant needs nonempty output")
+					}
+					data[0] ^= 1
+					if err := os.WriteFile(path, data, 0644); err != nil {
+						return err
+					}
+					b.Files, err = inventory(newDir)
+					if err != nil {
+						return err
+					}
+					plant = false
+				}
+				r.Comparisons = append(r.Comparisons, comparison{Policy: policy, Input: input, InputSHA256: digest, Baseline: a, Candidate: b})
+				if a.Exit != b.Exit || a.Stdout != b.Stdout || a.Stderr != b.Stderr {
+					return fmt.Errorf("CLI behavior drift: %s %v", input, args)
+				}
+				if err := compareFiles(a.Files, b.Files); err != nil {
+					return fmt.Errorf("%s %v: %w", input, args, err)
+				}
 			}
 		}
 	}

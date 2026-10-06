@@ -36,9 +36,10 @@ func TestParityCLIBytePlant(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Four inputs, six target selections, three memory choices, three simulator
-	// choices, and four non-generation controls: omission cannot look like parity.
-	if len(evidence.Comparisons) != 4*(6*3*3+4) {
-		t.Fatalf("matrix coverage: %d of 232 comparisons", len(evidence.Comparisons))
+	// choices, default/explicit transient/persistent policy, invalid policies and
+	// CLI rejection controls: omission cannot look like parity.
+	if len(evidence.Comparisons) != 4*(6*3*3+4+2+2*6*3*3+2*6) {
+		t.Fatalf("matrix coverage: %d of 720 comparisons", len(evidence.Comparisons))
 	}
 	if code := run(append(args, "--plant-byte-change")); code != 1 {
 		t.Fatalf("plant exit %d want 1", code)
