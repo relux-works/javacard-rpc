@@ -55,6 +55,33 @@ jar {
     }
 }
 
+// Publish the actual archive and resolved dependencies for the counter launcher.
+// Recreate on every build so changed configuration/artifacts cannot reuse a receipt.
+tasks.register('publishLaunchClasspath') {
+    dependsOn tasks.named('jar')
+    doLast {
+        def launchDir = layout.buildDirectory.dir('launch').get().asFile
+        launchDir.mkdirs()
+        def classpath = new File(launchDir, 'classpath.txt')
+        def files = [tasks.named('jar').get().archiveFile.get().asFile] +
+                configurations.runtimeClasspath.files.toList().sort { it.absolutePath }
+        classpath.text = files.collect { it.absolutePath }.join('\n') + '\n'
+        def inputs = [file('build.gradle'), file('settings.gradle'), classpath] +
+                fileTree('src/main').files.toList().sort { it.absolutePath }
+        if (file('gradle.properties').exists()) inputs.add(file('gradle.properties'))
+        def checksum = { File input ->
+            java.security.MessageDigest.getInstance('SHA-256').digest(input.bytes).encodeHex().toString()
+        }
+        new File(launchDir, 'checksums.sha256').text = (files + inputs).collect {
+            "${checksum(it)}  ${it.absolutePath}"
+        }.join('\n') + '\n# end of bridge build checksums\n'
+    }
+}
+
+tasks.named('build') {
+    dependsOn tasks.named('publishLaunchClasspath')
+}
+
 run {
     jvmArgs '--add-modules', 'java.smartcardio'
     standardInput = System.in

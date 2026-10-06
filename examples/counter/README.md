@@ -103,12 +103,32 @@ Start the bridge with the counter applet loaded:
 make run-bridge
 ```
 
-`examples/counter/run-bridge.sh` assembles the classpath from:
+`make build-bridge` publishes the actual Gradle archive and resolved runtime
+dependencies in `bridge/build/launch/classpath.txt`, with SHA-256 checksums in
+`checksums.sha256`. `examples/counter/run-bridge.sh` uses that classpath plus:
 
-- `bridge/build/libs/jcrpc-bridge-0.1.0.jar`
 - `examples/counter/applet/build/libs/counter-applet-0.1.0.jar`
 - `examples/counter/generated/counter-server-javacard/build/libs/counter-server-javacard-1.0.0.jar`
-- `jcardsim` and `smartcardio`
+
+The launcher refuses missing build metadata, missing/multiple bridge archives,
+or changed build inputs, archives and dependencies with a named diagnostic and
+exit 2 before starting Java. Remove obsolete archives from `bridge/build/libs`
+and rebuild if the directory is ambiguous. `JCRPC_SKIP_BUILD=1` skips both builds
+and performs the same checks without invoking Gradle. CLI arguments such as
+`--port`, `--card-provider` and `--card-scope` are forwarded unchanged.
+The receipt binds the existing main-source files and build descriptors at build
+time; it does not detect newly added source files or authenticate local files
+against a malicious writer. Rebuild after source changes. Build paths are local
+to the checkout; rebuild after moving a built checkout.
+
+Run the bounded launcher controls and their narrowing mutants with:
+
+```bash
+cd codegen && go test . -run '^TestCounterLauncher' -count=1 -v
+```
+
+The controls use disposable files and a Java argv spy; `make e2e` exercises the
+actual built bridge and both real runtime clients.
 
 ## One-Shot E2E
 

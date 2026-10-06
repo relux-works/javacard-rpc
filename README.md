@@ -398,6 +398,7 @@ make e2e
 | Build Kotlin E2E CLI | `make build-kotlin-cli` |
 | Run codegen tests | `make test-codegen` |
 | Run bridge tests (CardProvider SPI, card scopes, refusals) | `make test-bridge` |
+| Run counter launcher controls and narrowing mutants | `cd codegen && go test . -run '^TestCounterLauncher' -count=1 -v` |
 | Run the mandatory generated Kotlin transport/lifecycle harness | `make test-kotlin-contract` |
 | Convert generated stream applet to CAP | `JCRPC_ANT_JAVACARD_JAR=... JCRPC_JCKIT_DIR=... make test-cap` |
 | Run release validation including CAP conversion | `JCRPC_ANT_JAVACARD_JAR=/path/to/ant-javacard.jar JCRPC_JCKIT_DIR=/path/to/oracle_javacard_sdks/jc320v25.1_kit make release-check` (`ant` must be on `PATH`) |
@@ -431,6 +432,7 @@ object headers, reference widths and digest/provider/JCRE allocations.
 | Tool | Purpose | Command | Output |
 | --- | --- | --- | --- |
 | Go | Build codegen and run parser, generator, JVM harness, and CLI tests | `cd codegen && go test ./...` | Go test cache; task-local smoke files use `.temp/` |
+| Bash + `shasum` | Validate the Gradle-published counter bridge classpath and build checksums before Java launch | `examples/counter/run-bridge.sh [--port 9025]`; `JCRPC_SKIP_BUILD=1 examples/counter/run-bridge.sh` after builds | `bridge/build/launch/classpath.txt`, `checksums.sha256`; named refusal on stderr, exit 2 |
 | Gradle | Compile generated Java/Kotlin packages and run the mandatory Kotlin/JVM transport/lifecycle harness | `make test-kotlin-contract`; `gradle -p <generated-package> build` | Go-managed temporary harness or package-local `build/` |
 | `javac` / `java` | Compile and execute generated Java runtime and fragmented-APDU harnesses | Run through `go test ./...` | Go-managed temporary directories |
 | Ant + ant-javacard | Convert the generated Java stream applet to a verified CAP | `JCRPC_ANT_JAVACARD_JAR=... JCRPC_JCKIT_DIR=... make test-cap` | Go-managed temporary CAP |
