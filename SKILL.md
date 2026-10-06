@@ -85,7 +85,8 @@ Stream lifecycle code is generated, not supplied by an applet or application
 implementation:
 
 - the Java skeleton owns one applet-level session manager shared by all streamed
-  methods, one transient workspace sized to the largest declared stream, digest
+  methods, one shared workspace sized to the largest declared stream (transient
+  by default, or opt-in `[applet] stream_workspace = "persistent"`), digest
   scratch, reset detection, and reusable failure objects;
 - the generated Java APDU adapter receives every incoming fragment before
   dispatch and sends from preallocated transient storage;
@@ -101,6 +102,22 @@ implementation:
 Do not place another stream session manager around generated clients or inside
 individual handlers. That creates competing owners and defeats cross-method
 serialization and reset cleanup.
+
+`stream_workspace` changes only bulk storage and is independent of
+`--stream-memory`. Omission, `""` and `"transient"` select the transient default;
+`"persistent"` is the only opt-in value. Persistent bytes consume NVM endurance and survive reset;
+transient control state invalidates the session, and the next stream dispatch
+wipes retained bytes before reuse. Abort/deselect wipe explicitly. An interrupted
+wipe may leave residual bytes; this policy does not promise atomic secure erasure.
+Use only large, infrequent open-data frames. Secrets must never be staged in NVM;
+the IDL has no secrecy annotations, so the generator cannot infer or enforce that
+restriction. Audit every streamed method before opting the whole applet in.
+Each cleanup writes the full workspace capacity; uploads/handler output add
+their own writes. See [.spec/idl.md](.spec/idl.md) for write-volume accounting,
+measured generated allocation payload and reset/residual limits.
+The stream adapter preserves class/chaining/security while decoding logical
+channels. For base `0xB6`, use `0xB4..0xB7` and `0xF0..0xFE`; channel 19
+would require reserved `0xFF` and is unavailable for that class.
 
 The concrete applet only wires lifecycle into the generated adapter. Construct
 one adapter for the applet instance, call `processIfStream(apdu)` before the

@@ -27,11 +27,21 @@ Unknown TOML keys are rejected by the parser.
 | `version` | string | yes | Must match strict semver `X.Y.Z` (numeric only). |
 | `aid` | string | yes | Hex string, 5-16 bytes (10-32 hex chars), even length, no surrounding whitespace. |
 | `cla` | integer | yes | Must be in byte range `0x00..0xFF`; `0x00` is forbidden. |
+| `stream_workspace` | string | no | `"transient"` (default, also an empty setting) or `"persistent"`; only bulk Java stream workspace changes storage. Unknown values are rejected. |
 
 Notes:
 
 - TOML integer forms are accepted (`0xB0`, `176`, etc.); hex is recommended for APDU values.
 - Validation rejects `cla = 0x00` as ISO 7816 reserved.
+- Persistent stream workspace keeps all control state and scratch transient;
+  it is independent of `--stream-memory`. Explicit abort/deselect/failure and
+  closing a read overwrite workspace bytes. Reset invalidates the session but
+  leaves persistent bytes until the next stream dispatch cleans them. NVM
+  writes consume endurance; interrupted wiping is not atomic or secure erasure.
+- Stream adapter CLA matching follows Java Card RE §4.3 channel coding and
+  preserves chaining/security indicators. `0xFF` is reserved and refused;
+  `0xFX` cannot encode channel 19. Proprietary first-coding bit 6 has no
+  further-coding counterpart. RFU `0x2X/0x3X` keeps exact matching.
 
 ## 3. `[methods.<name>]` Section
 
@@ -182,8 +192,10 @@ A concurrent streamed call fails locally with `StreamBusy` and does not send an
 abort or any other APDU that could disturb the active operation.
 
 The Java output owns the session lifecycle inside generated code. The generated
-skeleton constructs one runtime, one maximum-sized transient workspace, digest
-scratch, a reset marker, SHA-256, and reusable status exceptions. The generated
+skeleton constructs one runtime, one maximum-sized shared workspace (transient
+by default), transient scalar state, a transient handler reference, digest
+scratch, SHA-256, and reusable status exceptions. Persistent workspace adds a
+one-byte transient reset marker. The generated
 APDU adapter reads all incoming short-APDU fragments, invokes the generated
 dispatcher, and sends the result from preallocated transient storage. The
 developer implements only typed `(buffer, offset, length, output, capacity)`
@@ -200,12 +212,99 @@ APDU adapter, calls `processIfStream(apdu)` before ordinary dispatch, and
 forwards `deselect()` to the adapter. The generated skeleton and adapter remain
 the sole owners of stream session state.
 
-The command path does not allocate an object or array. Reset, applet deselect,
-explicit abort and every terminal validation failure wipe the active workspace.
-The transient reset marker also prevents persistent scalar metadata from being
-mistaken for a live session after card reset or deselect. Cryptographic purpose
+The generated command path does not allocate an object or array. With transient
+workspace, reset clears every session array. With persistent workspace, reset
+clears control state and its reset marker, invalidating the session immediately;
+retained workspace bytes are overwritten on the next stream dispatch before
+reuse or stale-session rejection. Explicit abort, applet deselect, first
+successful read close and terminal validation failure overwrite the full
+workspace. Class rejection and foreign-method refusal preserve a live owner's
+session. Persistent scalar metadata is never used. Cryptographic purpose
 and authorization remain properties of the typed method implementation; a
 stream field does not authorize generic signing or decryption.
+
+### 5.2 Bulk workspace storage policy
+
+`[applet] stream_workspace = "persistent"` opts the entire applet's one shared
+bulk byte workspace into NVM. Omission, an empty setting, or `"transient"` keeps
+the default. Unknown values fail validation before CLI output is written.
+`--stream-memory clear_on_deselect|clear_on_reset` independently selects the
+clearing event for transient control/scratch arrays; reusable failure status
+always uses `CLEAR_ON_RESET`. Only the persistent policy adds a transient reset
+marker. The wire protocol and shared ownership remain unchanged.
+
+Use persistent workspace only for large, infrequent frames containing open
+data. Secrets must never be staged in NVM. The current IDL field/message model
+has no secrecy annotation: the generator cannot infer semantic secrecy or
+enforce this restriction. It does not guess from field or method names. The
+applet author must audit every streamed method before enabling an applet-wide
+persistent policy; a streamed secret makes this policy unsuitable.
+
+For workspace capacity `W`, construction zeroes `W` bytes once. Successful
+upload of `L` bytes assigns those `L` workspace bytes; an identical chunk retry
+compares bytes without rewriting them. Handler output writes are owned by the
+handler: writing each of `R` output bytes once costs `R` byte assignments, but
+handlers may write more than that. Result reads, descriptor recovery and
+digest computation read NVM and write transient scratch/output. Each full
+cleanup assigns zero to all `W` bytes, including unused/already-zero bytes:
+abort, deselect, terminal failure, first successful read close, detected reset,
+or starting again from a closed-session receipt. A repeated read close does not
+wipe again. Starting after read close does wipe again. Count each cleanup
+separately; this is logical byte-assignment volume, not physical programming
+cycles or an endurance estimate.
+
+Fixed short results retain their write-close receipt/result bytes for idempotent
+write-close retries. They have no streamed read-close cleanup; the next session,
+abort, deselect or post-reset dispatch performs the full workspace wipe.
+
+For `W = 2048`, a 1792-byte upload, a handler writing 1792 result bytes once,
+and one read-close cleanup issue `1792 + 1792 + 2048 = 5632` logical NVM byte
+assignments. Starting the next session adds another 2048-byte wipe; construction
+and reset/deselect/abort cleanups add their own full-capacity writes. Choose a
+card's endurance budget and operation frequency accordingly. Runtime and
+handler writes/wiping are not transactional: interruption or power loss can
+leave torn/residual workspace bytes. Reset prevents that session from being
+recovered; subsequent stream dispatch retries full cleanup. No automatic NVM
+zeroing on reset, atomic wipe, or secure erasure is promised.
+
+Simulator construction accounting for generated bsim-auth (`W = 2048`):
+
+| Generated array payload | v0.4.4 / default | Persistent policy |
+| --- | ---: | ---: |
+| Transient byte/short payload | 2375 B | 328 B |
+| Persistent byte/short payload | 108 B | 2156 B |
+| Transient handler references | 1 slot | 1 slot |
+
+Moving the workspace saves 2048 B and adds a 1 B transient reset marker, a net
+2047 B reduction. This counts generated arrays, including static dispatch tables
+and three mutable failure-status words. Object headers, reference widths,
+digest/provider/JCRE allocations and physical-card memory totals are excluded.
+
+### 5.3 Stream adapter CLA comparison
+
+The stream adapter checks instruction membership before CLA, preserving ordinary
+fallback. First coding removes only channel bits with `CLA & 0xFC` and compares
+the remaining class/chaining/security fields. Further coding removes channel
+bits with `CLA & 0xF0`. For a first-coded configured CLA, the further-coding
+comparison value is `(base & 0x90) | 0x40`, plus `0x20` when `(base & 0x0C)` is
+nonzero. For a further-coded base, the first-coding comparison value is
+`(base & 0x90)`, plus canonical `0x0C` when `(base & 0x20)` is nonzero.
+Proprietary first-coding bit 6 is application-defined and has no further-coding
+counterpart; two first-coding SM bits collapse to one further-coding indicator.
+That representation is non-injective and does not preserve an arbitrary
+application class bit or distinguish first-coding SM modes in further coding.
+
+For base `0xB6` (or channel-normalized `0xB4`), the exact condition is
+`CLA != 0xFF && ((CLA & 0xFC) == 0xB4 || (CLA & 0xF0) == 0xF0)`:
+channels 0–3 use `B4..B7`, channels 4–18 use `F0..FE`. Channel 19 would require
+reserved `FF` and is unavailable for this class. Other applicable classes can
+encode channels 4–19 (for example `80..83` / `C0..CF`). Interindustry RFU
+`2X/3X` configured values retain exact legacy comparison; configured `FF` is
+refused. CLA comparison does not authorize secure messaging, implement command
+chaining, open a logical channel, or select an applet: those remain JCRE/app
+responsibilities. Physical channel/selection support is a separate platform
+constraint. These encodings follow [Oracle Java Card RE 3.2 §4.3, Tables
+4-2/4-3](https://docs.oracle.com/en/java/javacard/3.2/jc-re-spec/F74157_03.pdf).
 
 ## 6. Parameter Location Inference Rules
 

@@ -377,6 +377,8 @@ type javaTemplateData struct {
 	// StreamDigestExternalAccess is the externalAccess argument of the stream
 	// digest: "true" with StreamMemoryClearOnReset, "false" otherwise.
 	StreamDigestExternalAccess string
+	StreamWorkspacePersistent  bool
+	StreamCLAMatch             string
 }
 
 // StreamMemory selects the transient memory the generated stream state lives in.
@@ -467,6 +469,9 @@ func GenerateJavaSkeletonWithOptions(s *Schema, packageName string, options Java
 	if s == nil {
 		return nil, fmt.Errorf("schema is nil")
 	}
+	if s.Applet.StreamWorkspace != "" && s.Applet.StreamWorkspace != "transient" && s.Applet.StreamWorkspace != "persistent" {
+		return nil, fmt.Errorf("unknown stream workspace %q: expected transient or persistent", s.Applet.StreamWorkspace)
+	}
 	if strings.TrimSpace(packageName) == "" {
 		return nil, fmt.Errorf("package name is empty")
 	}
@@ -477,23 +482,25 @@ func GenerateJavaSkeletonWithOptions(s *Schema, packageName string, options Java
 	}
 
 	data := javaTemplateData{
-		PackageName:            strings.TrimSpace(packageName),
-		AppletName:             strings.TrimSpace(s.Applet.Name),
-		ClassName:              toPascal(s.Applet.Name) + "Skeleton",
-		TransportInterfaceName: toPascal(s.Applet.Name) + "Transport",
-		SchemaFileName:         strings.ToLower(strings.TrimSpace(s.Applet.Name)) + ".toml",
-		CLAHex:                 fmt.Sprintf("%02X", s.Applet.CLA),
-		CLAConstName:           "CLA_" + toUpperSnake(s.Applet.Name),
-		MethodCommentBlock:     buildMethodCommentBlock(methods),
-		INSConstantsBlock:      buildINSConstantsBlock(methods),
-		StatusConstantsBlock:   buildStatusConstantsBlock(s.StatusWords),
-		DispatchCasesBlock:     buildDispatchCasesBlock(methods),
-		HandlersBlock:          buildHandlersBlock(methods),
-		AbstractMethodsBlock:   buildAbstractMethodsBlock(methods),
-		StreamEndpointName:     toPascal(s.Applet.Name) + "StreamEndpoint",
-		StreamRuntimeName:      toPascal(s.Applet.Name) + "BoundedStreamRuntime",
-		StreamAPDUAdapterName:  toPascal(s.Applet.Name) + "StreamAPDUAdapter",
-		StreamTransientEvent:   streamEvent,
+		PackageName:               strings.TrimSpace(packageName),
+		AppletName:                strings.TrimSpace(s.Applet.Name),
+		ClassName:                 toPascal(s.Applet.Name) + "Skeleton",
+		TransportInterfaceName:    toPascal(s.Applet.Name) + "Transport",
+		SchemaFileName:            strings.ToLower(strings.TrimSpace(s.Applet.Name)) + ".toml",
+		CLAHex:                    fmt.Sprintf("%02X", s.Applet.CLA),
+		CLAConstName:              "CLA_" + toUpperSnake(s.Applet.Name),
+		MethodCommentBlock:        buildMethodCommentBlock(methods),
+		INSConstantsBlock:         buildINSConstantsBlock(methods),
+		StatusConstantsBlock:      buildStatusConstantsBlock(s.StatusWords),
+		DispatchCasesBlock:        buildDispatchCasesBlock(methods),
+		HandlersBlock:             buildHandlersBlock(methods),
+		AbstractMethodsBlock:      buildAbstractMethodsBlock(methods),
+		StreamEndpointName:        toPascal(s.Applet.Name) + "StreamEndpoint",
+		StreamRuntimeName:         toPascal(s.Applet.Name) + "BoundedStreamRuntime",
+		StreamAPDUAdapterName:     toPascal(s.Applet.Name) + "StreamAPDUAdapter",
+		StreamTransientEvent:      streamEvent,
+		StreamWorkspacePersistent: s.Applet.StreamWorkspace == "persistent",
+		StreamCLAMatch:            javaStreamCLAMatch(s.Applet.CLA),
 
 		StreamDigestExternalAccess: streamDigestExternalAccess,
 	}

@@ -39,12 +39,26 @@ func TestGeneratedJavaStreamPackageConvertsToCAP(t *testing.T) {
 	if antJavaCardJar == "" || jckitDir == "" {
 		t.Skip("set JCRPC_ANT_JAVACARD_JAR and JCRPC_JCKIT_DIR for CAP conversion smoke")
 	}
+	// Real converter verification includes both storage policies and both
+	// lifecycle modes; simulator javac success alone does not establish this.
+	for _, policy := range []string{"transient", "persistent"} {
+		for _, memory := range []StreamMemory{StreamMemoryClearOnDeselect, StreamMemoryClearOnReset} {
+			t.Run(policy+"/"+string(memory), func(t *testing.T) {
+				convertStreamCAP(t, ant, antJavaCardJar, jckitDir, policy, memory)
+			})
+		}
+	}
+}
+
+func convertStreamCAP(t *testing.T, ant, antJavaCardJar, jckitDir, policy string, memory StreamMemory) {
+	t.Helper()
 
 	schema, err := ParseFile(filepath.Join("testdata", "stream.toml"))
 	if err != nil {
 		t.Fatalf("ParseFile returned error: %v", err)
 	}
-	result, err := GenerateJavaSkeleton(schema, "io.jcrpc.streamdemo.server")
+	schema.Applet.StreamWorkspace = policy
+	result, err := GenerateJavaSkeletonWithOptions(schema, "io.jcrpc.streamdemo.server", JavaOptions{StreamMemory: memory})
 	if err != nil {
 		t.Fatalf("GenerateJavaSkeleton returned error: %v", err)
 	}

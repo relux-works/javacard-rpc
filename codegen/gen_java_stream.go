@@ -110,7 +110,13 @@ const javaStreamRuntimeTemplate = `package {{.PackageName}};
 /**
  * Generated single-owner, bounded, half-duplex stream state machine.
  *
- * The skeleton constructs exactly one instance and injects {{.StreamTransientEvent}}
+{{if .StreamWorkspacePersistent}} * Only the bulk workspace is persistent. Scalar state, handler reference,
+ * digest scratch and reset detection remain transient. Reset invalidates the
+ * session immediately; retained workspace bytes are wiped on the next dispatch.
+ * Abort, deselect and protocol failure explicitly wipe the workspace. These
+ * writes consume NVM endurance and may be interrupted; no atomic wipe is promised.
+ * Command processing reuses one exception and allocates no object or array.
+{{else}} * The skeleton constructs exactly one instance and injects {{.StreamTransientEvent}}
  * arrays for everything mutable: the byte workspace, the digest scratch, the
  * short[] scalar state machine and the one-slot handler reference. This class
  * declares no mutable field of its own, so a WRITE chunk, a result or an abort
@@ -118,7 +124,7 @@ const javaStreamRuntimeTemplate = `package {{.PackageName}};
  * the all-zero empty state without a reset marker (security audit S-06).
  * Command processing reuses one exception object and never allocates an object
  * or array.
- */
+{{end}} */
 public final class {{.StreamRuntimeName}} implements {{.StreamEndpointName}} {
     private static final short SW_WRONG_LENGTH = (short) 0x6700;
     private static final short SW_INVALID_DATA = (short) 0x6A80;
@@ -168,7 +174,8 @@ public final class {{.StreamRuntimeName}} implements {{.StreamEndpointName}} {
     private final Object[] handlerSlot;
     private final Sha256 sha256;
     private final StreamStatusWordException failure;
-
+{{if .StreamWorkspacePersistent}}    private final byte[] resetMarker;
+{{end}}
     public {{.StreamRuntimeName}}(
             byte[] workspace,
             byte[] digestScratch,
@@ -176,7 +183,9 @@ public final class {{.StreamRuntimeName}} implements {{.StreamEndpointName}} {
             Object[] handlerSlot,
             Sha256 sha256) {
         this.workspace = workspace;
-        this.digestScratch = digestScratch;
+{{if .StreamWorkspacePersistent}}        this.resetMarker = javacard.framework.JCSystem.makeTransientByteArray(
+                (short) 1, javacard.framework.JCSystem.{{.StreamTransientEvent}});
+{{end}}        this.digestScratch = digestScratch;
         this.scalars = scalars;
         this.handlerSlot = handlerSlot;
         this.sha256 = sha256;
@@ -191,7 +200,8 @@ public final class {{.StreamRuntimeName}} implements {{.StreamEndpointName}} {
             throw failure;
         }
         clearAll();
-    }
+{{if .StreamWorkspacePersistent}}        resetMarker[0] = (byte) 1;
+{{end}}    }
 
     @Override
     public short dispatch(
@@ -214,7 +224,13 @@ public final class {{.StreamRuntimeName}} implements {{.StreamEndpointName}} {
             short responseOffset,
             short responseCapacity) {
         try {
-            validateRange(requestBuffer, requestOffset, requestLength);
+{{if .StreamWorkspacePersistent}}            // Transient state is already empty after reset; clean retained NVM
+            // before any command can expose or reuse it, including stale reads.
+            if (resetMarker[0] == 0) {
+                clearAll();
+                resetMarker[0] = (byte) 1;
+            }
+{{end}}            validateRange(requestBuffer, requestOffset, requestLength);
             validateRange(responseBuffer, responseOffset, responseCapacity);
 
             if (operation == OP_ABORT) {
@@ -617,9 +633,11 @@ public final class {{.StreamRuntimeName}} implements {{.StreamEndpointName}} {
     }
 
     /**
-     * Return to the empty state. Writes only the injected transient arrays,
+{{if .StreamWorkspacePersistent}}     * Return to empty and explicitly overwrite the persistent workspace.
+     * Wiping is not transactional and may be interrupted by loss of power.
+{{else}}     * Return to the empty state. Writes only the injected transient arrays,
      * so the result is bit-identical to a freshly cleared transient array.
-     */
+{{end}}     */
     private void clearAll() {
         wipe(workspace);
         wipe(digestScratch);
@@ -673,7 +691,10 @@ public final class {{.StreamAPDUAdapterName}} {
         if (!logic.isStreamInstruction(ins)) {
             return false;
         }
-        if (apduBuffer[ISO7816.OFFSET_CLA] != {{.ClassName}}.{{.CLAConstName}}) {
+        byte cla = apduBuffer[ISO7816.OFFSET_CLA];
+        // ISO 7816 / Java Card RE 4.3: remove only channel bits for the
+        // applicable coding; preserve class, chaining and secure messaging.
+        if (!({{.StreamCLAMatch}})) {
             ISOException.throwIt(ISO7816.SW_CLA_NOT_SUPPORTED);
         }
 
@@ -853,7 +874,7 @@ func buildJavaStreamOwnedFields(data *javaTemplateData, methods []javaMethodRend
 }
 
 func buildJavaStreamConstructor(data *javaTemplateData) string {
-	return fmt.Sprintf(`    protected %s(%s transport) {
+	source := fmt.Sprintf(`    protected %s(%s transport) {
         this.transport = transport;
         this.empty = new byte[0];
         this.sharedFailure = new StatusWordException(SW_INS_NOT_SUPPORTED);
@@ -873,6 +894,38 @@ func buildJavaStreamConstructor(data *javaTemplateData) string {
                         STREAM_HANDLER_SLOT_COUNT, JCSystem.%[5]s),
                 this);
     }`, data.ClassName, data.TransportInterfaceName, data.StreamEndpointName, data.StreamRuntimeName, data.StreamTransientEvent, data.StreamDigestExternalAccess)
+	if data.StreamWorkspacePersistent {
+		source = strings.Replace(source, "JCSystem.makeTransientByteArray(\n                        STREAM_WORKSPACE_LENGTH, JCSystem."+data.StreamTransientEvent+")", "new byte[STREAM_WORKSPACE_LENGTH]", 1)
+		start := strings.Index(source, "        // Every mutable word")
+		end := strings.Index(source[start:], "        this.streamSession") + start
+		source = source[:start] + "        // Only bulk workspace uses NVM; all control and scratch arrays remain transient.\n" + source[end:]
+	}
+	return source
+}
+
+// Java Card RE 4.3 tables 4-2/4-3. Proprietary first coding's bit 6 is
+// application-defined and has no further-coding counterpart. The two first
+// coding SM bits collapse to the one further-coding SM indicator.
+func javaStreamCLAMatch(base byte) string {
+	first := base & 0xFC
+	further := (base & 0x90) | 0x40
+	if base&0x40 != 0 {
+		first = base & 0x90
+		if base&0x20 != 0 {
+			first |= 0x0C
+		}
+		further = base & 0xF0
+	} else if base&0x0C != 0 {
+		further |= 0x20
+	}
+	// RFU interindustry 2X/3X and FF do not encode logical channels.
+	if base == 0xFF {
+		return "false"
+	}
+	if base&0xE0 == 0x20 {
+		return fmt.Sprintf("cla == (byte) 0x%02X", base)
+	}
+	return fmt.Sprintf("cla != (byte) 0xFF && ((cla & 0xFC) == 0x%02X || (cla & 0xF0) == 0x%02X)", first, further)
 }
 
 func buildJavaStreamDispatchSupport(data *javaTemplateData, methods []javaMethodRender) string {

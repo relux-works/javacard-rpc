@@ -40,6 +40,9 @@ func Validate(s *Schema) []ValidationError {
 }
 
 func validateApplet(s *Schema, add func(path, msg string)) {
+	if s.Applet.StreamWorkspace != "" && s.Applet.StreamWorkspace != "transient" && s.Applet.StreamWorkspace != "persistent" {
+		add("applet.stream_workspace", "must be transient or persistent")
+	}
 	if strings.TrimSpace(s.Applet.Name) == "" {
 		add("applet.name", "must be non-empty")
 	}

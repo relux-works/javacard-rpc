@@ -21,11 +21,12 @@ type rawSchema struct {
 }
 
 type rawApplet struct {
-	Name        string `toml:"name" json:"name"`
-	Description string `toml:"description" json:"description"`
-	Version     string `toml:"version" json:"version"`
-	AID         string `toml:"aid" json:"aid"`
-	CLA         int64  `toml:"cla" json:"cla"`
+	Name            string `toml:"name" json:"name"`
+	Description     string `toml:"description" json:"description"`
+	Version         string `toml:"version" json:"version"`
+	AID             string `toml:"aid" json:"aid"`
+	CLA             int64  `toml:"cla" json:"cla"`
+	StreamWorkspace string `toml:"stream_workspace" json:"stream_workspace"`
 }
 
 type rawMethod struct {
@@ -101,11 +102,12 @@ func normalizeSchema(raw rawSchema) (*Schema, error) {
 
 	schema := &Schema{
 		Applet: Applet{
-			Name:        raw.Applet.Name,
-			Description: raw.Applet.Description,
-			Version:     raw.Applet.Version,
-			AID:         raw.Applet.AID,
-			CLA:         cla,
+			Name:            raw.Applet.Name,
+			Description:     raw.Applet.Description,
+			Version:         raw.Applet.Version,
+			AID:             raw.Applet.AID,
+			CLA:             cla,
+			StreamWorkspace: raw.Applet.StreamWorkspace,
 		},
 		Methods:     make(map[string]*Method, len(raw.Methods)),
 		StatusWords: make(map[string]StatusWord, len(raw.StatusWords)),

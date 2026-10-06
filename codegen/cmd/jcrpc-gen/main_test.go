@@ -608,3 +608,40 @@ func TestRunStreamMemoryFlag(t *testing.T) {
 		t.Fatalf("a refused --stream-memory still wrote output: %v", err)
 	}
 }
+
+// The production CLI accepts each storage policy (including explicit empty as
+// the documented transient default) and refuses an unknown policy
+// with validation exit 1 before creating any output (positive controls included).
+func TestRunStreamWorkspacePolicy(t *testing.T) {
+	input, err := os.ReadFile(filepath.Join("..", "..", "testdata", "stream.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, policy := range []string{"", "transient", "persistent", "ram"} {
+		t.Run(policy, func(t *testing.T) {
+			root := t.TempDir()
+			out := filepath.Join(root, "out")
+			schema := writeFile(t, root, "stream.toml", strings.Replace(string(input), "[applet]", "[applet]\nstream_workspace = \""+policy+"\"", 1))
+			var stderr bytes.Buffer
+			code := run([]string{"--java", "io.jcrpc.streamdemo.server", "--out-dir", out, schema}, &stderr)
+			if policy == "ram" {
+				if code != exitCodeValidation || !strings.Contains(stderr.String(), "applet.stream_workspace") {
+					t.Fatalf("refusal: %d %s", code, stderr.String())
+				}
+				if _, err := os.Stat(out); !os.IsNotExist(err) {
+					t.Fatal("invalid policy wrote output")
+				}
+				return
+			}
+			if code != 0 {
+				t.Fatalf("valid policy refused: %d %s", code, stderr.String())
+			}
+			skeleton := filepath.Join(out, "streamdemo-server-javacard", "src", "main", "java", "io", "jcrpc", "streamdemo", "server", "StreamDemoSkeleton.java")
+			fragment := "STREAM_WORKSPACE_LENGTH, JCSystem.CLEAR_ON_DESELECT)"
+			if policy == "persistent" {
+				fragment = "new byte[STREAM_WORKSPACE_LENGTH]"
+			}
+			assertFileContains(t, skeleton, fragment)
+		})
+	}
+}
