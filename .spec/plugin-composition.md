@@ -2,13 +2,17 @@
 
 The `pluginapi` module owns the IDL model and the in-memory `Plugin.Generate`
 contract. It has no third-party dependencies. Parsing TOML, semantic validation,
-target selection, output packaging, and filesystem writes belong to the
+target selection, canonical target roots, and filesystem writes belong to the
 `codegen` facade. Existing exported facade model names are type aliases;
 generator entry points delegate to the preserved renderers.
 
 The CLI explicitly composes `plugins/javacard.Plugin`, `plugins/swift.Plugin`,
 and `plugins/kotlin.Plugin`. Each consumes `pluginapi.Schema` and options and
-returns source bytes or an error. Their transitive compiled dependency graph
+returns the complete ordered source/build-manifest package or an error.
+Adapters own source layout and Gradle/SPM templates; the CLI validates returned
+relative paths before writing a selected target package. The frozen API carries
+namespace, stream lifecycle and the resolved simulator coordinate. See
+[API contract](../pluginapi/README.md) and [release preparation](plugin-api-release.md). Their transitive compiled dependency graph
 must exclude the root facade package and its TOML parser. Shared rendering
 helpers remain in `codegen/internal/render` for this phase; templates and
 rendering behavior are unchanged. Runtime repositories and consumers do not
@@ -56,12 +60,13 @@ v0.4.5 (tag object `da77d07af5dc6866437d3db1004fdeda9738d59c`,
 commit `cfed4182356a4f4609c88f58924aac79c05ae5b6`,
 tree `cda7d28d89cea229af2603b79e850a9eb1e862d5`).
 The independent model carries stream workspace policy. Lifecycle and simulator
-coordinates must remain represented in the next API freeze, including target-owned
+coordinates are represented in the API freeze, including target-owned
 build manifests. Parser and validator
 remain in the facade. Default, explicit transient and persistent outputs are
 compared exactly, including both lifecycle modes and CLI refusal controls.
-This import preserves the accepted composition and harness checkpoint; API
-freeze and backend releases follow in separate leaves.
+The API freeze preserves the accepted composition/port checkpoint and
+compatibility wrappers. Independent API publication and later backend releases
+follow the parent-owned release sequence.
 
 Source builds require the sibling `pluginapi` directory through the local
 `replace` directive. Publishing the independent module and pinning released

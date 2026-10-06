@@ -27,9 +27,9 @@ func (p *recordingPlugin) Generate(s *pluginapi.Schema, o pluginapi.Options) ([]
 // shared model and preserves target names/options and rendered bytes.
 func TestRunComposesThreePlugins(t *testing.T) {
 	out := t.TempDir()
-	j := &recordingPlugin{files: []pluginapi.File{{Name: "Probe.java", Data: []byte("java-plugin")}}}
-	s := &recordingPlugin{files: []pluginapi.File{{Name: "CounterClient.swift", Data: []byte("swift-plugin")}}}
-	k := &recordingPlugin{files: []pluginapi.File{{Name: "CounterClient.kt", Data: []byte("kotlin-plugin")}}}
+	j := &recordingPlugin{files: []pluginapi.File{{Name: "src/main/java/probe/server/Probe.java", Data: []byte("java-plugin")}}}
+	s := &recordingPlugin{files: []pluginapi.File{{Name: "Sources/CounterClient/CounterClient.swift", Data: []byte("swift-plugin")}}}
+	k := &recordingPlugin{files: []pluginapi.File{{Name: "src/main/kotlin/probe/client/CounterClient.kt", Data: []byte("kotlin-plugin")}}}
 	var stderr bytes.Buffer
 	if code := runWithPlugins([]string{"--all", "--java", "probe.server", "--swift", "ProbeClient", "--kotlin", "probe.client", "--stream-memory", "clear_on_reset", "--out-dir", out, filepath.Join("..", "..", "testdata", "counter.toml")}, &stderr, j, s, k); code != 0 {
 		t.Fatalf("exit=%d: %s", code, &stderr)
@@ -39,7 +39,7 @@ func TestRunComposesThreePlugins(t *testing.T) {
 		options       pluginapi.Options
 		path, content string
 	}{
-		{j, pluginapi.Options{Namespace: "probe.server", StreamMemory: "clear_on_reset"}, "counter-server-javacard/src/main/java/probe/server/Probe.java", "java-plugin"},
+		{j, pluginapi.Options{Namespace: "probe.server", StreamMemory: "clear_on_reset", SimulatorDependency: defaultSimulatorDependency}, "counter-server-javacard/src/main/java/probe/server/Probe.java", "java-plugin"},
 		{s, pluginapi.Options{Namespace: "ProbeClient"}, "counter-client-swift/Sources/CounterClient/CounterClient.swift", "swift-plugin"},
 		{k, pluginapi.Options{Namespace: "probe.client"}, "counter-client-kotlin/src/main/kotlin/probe/client/CounterClient.kt", "kotlin-plugin"},
 	} {

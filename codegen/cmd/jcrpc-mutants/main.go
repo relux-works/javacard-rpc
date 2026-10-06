@@ -19,6 +19,24 @@ type mutant struct{ Name, File, Before, After, Module, Package, Test, Bound stri
 
 // Assertions are specific to the planted behavior, not setup/build failures.
 var assertions = map[string]string{
+	"api-template-dependency":   "API compiled graph contains forbidden dependency:",
+	"package-dot-one":           "invalid package exit 3:",
+	"package-backslash-one":     "released input narrowed:",
+	"package-colon-one":         "released input narrowed:",
+	"package-nul-one":           "malformed package must refuse before creating target:",
+	"package-symlink-root":      "symlink exit 0:",
+	"package-symlink-directory": "symlink exit 0:",
+
+	"package-escape-one":       "invalid package exit 0:",
+	"package-duplicate-one":    "invalid package exit 0:",
+	"package-nil-one":          "invalid package exit 0:",
+	"package-empty-one":        "invalid package exit 0:",
+	"package-conflict-one":     "invalid package exit 3:",
+	"package-symlink-one":      "symlink exit 0:",
+	"package-error-with-files": "invalid package exit 0:",
+	"package-simulator-option": "does not contain",
+	"api-extra-module":         "external module graph contains forbidden dependency github.com/BurntSushi/toml",
+
 	"workspace-validator-ram":       "refusal: 2 generate java skeleton: unknown stream workspace",
 	"workspace-generator-ram":       "invalid \"ram\":",
 	"workspace-security-B0":         "AssertionError: CLA rejection",
@@ -49,6 +67,25 @@ var assertions = map[string]string{
 }
 
 var mutants = []mutant{
+	{"api-template-dependency", "pluginapi/plugin.go", "package pluginapi", "package pluginapi\n\nimport \"text/template\"\n\nvar _ = template.New", "codegen", ".", "TestPluginAPIExternalConsumer", "permits exactly stdlib text/template in the otherwise dependency-free API; no facade cycle or compile error"},
+
+	{"package-dot-one", "codegen/cmd/jcrpc-gen/package_files.go", "file.Name == \".\"", "(file.Name == \".\" && len(file.Data) == 0)", "codegen", "./cmd/jcrpc-gen", "TestRunPackageOutputContract/java/dot-name", "admits dot only for nonempty data; fs.ValidPath stays present"},
+	{"package-backslash-one", "codegen/cmd/jcrpc-gen/package_files.go", "strings.ContainsRune(file.Name, '\\x00')", "(strings.ContainsRune(file.Name, '\\x00') || file.Name == \"src/main/java/probe\\\\client/CounterTransport.java\")", "codegen", "./cmd/jcrpc-gen", "TestReviewerNamespaceCompatibility/java/backslash", "narrows released input acceptance only for one literal backslash source path; all refusal guards remain"},
+	{"package-colon-one", "codegen/cmd/jcrpc-gen/package_files.go", "strings.ContainsRune(file.Name, '\\x00')", "(strings.ContainsRune(file.Name, '\\x00') || file.Name == \"src/main/java/probe:client/CounterTransport.java\")", "codegen", "./cmd/jcrpc-gen", "TestReviewerNamespaceCompatibility/java/colon", "narrows released input acceptance only for one literal colon source path; all refusal guards remain"},
+	{"package-nul-one", "codegen/cmd/jcrpc-gen/package_files.go", "strings.ContainsRune(file.Name, '\\x00')", "(strings.ContainsRune(file.Name, '\\x00') && file.Name != \"bad\\x00name\")", "codegen", "./cmd/jcrpc-gen", "TestReviewerMalformedNULFreshRoot/java", "admits exactly bad-NUL-name while retaining all other path guards and NUL rejection for other names"},
+	{"package-symlink-root", "codegen/cmd/jcrpc-gen/package_files.go", "if info.Mode()&os.ModeSymlink != 0 {", "if info.Mode()&os.ModeSymlink != 0 && path != root {", "codegen", "./cmd/jcrpc-gen", "TestRunPackageSymlinkRefusal/root", "admits root symlink only"},
+	{"package-symlink-directory", "codegen/cmd/jcrpc-gen/package_files.go", "if info.Mode()&os.ModeSymlink != 0 {", "if info.Mode()&os.ModeSymlink != 0 && component != \"src\" {", "codegen", "./cmd/jcrpc-gen", "TestRunPackageSymlinkRefusal/directory", "admits directory component src symlink only"},
+
+	{"package-escape-one", "codegen/cmd/jcrpc-gen/package_files.go", "!fs.ValidPath(file.Name) || file.Name == \".\" || strings.ContainsRune(file.Name, '\\x00') ||\n\t\t\t!filepath.IsLocal(filepath.FromSlash(file.Name))", "(!fs.ValidPath(file.Name) && file.Name != \"../escape.txt\") || file.Name == \".\" || strings.ContainsRune(file.Name, '\\x00') ||\n\t\t\t(!filepath.IsLocal(filepath.FromSlash(file.Name)) && file.Name != \"../escape.txt\")", "codegen", "./cmd/jcrpc-gen", "TestRunPackageOutputContract/java/escape", "admits only ../escape.txt through both lexical/native gates; preserves fs.ValidPath token and runs behavioral writes"},
+	{"package-duplicate-one", "codegen/cmd/jcrpc-gen/package_files.go", "if seen[file.Name] {", "if seen[file.Name] && file.Name != \"build.manifest\" {", "codegen", "./cmd/jcrpc-gen", "TestRunPackageOutputContract/java/duplicate", "admits duplicate build.manifest only"},
+	{"package-nil-one", "codegen/cmd/jcrpc-gen/package_files.go", "if file.Data == nil {", "if file.Data == nil && file.Name != \"bad\" {", "codegen", "./cmd/jcrpc-gen", "TestRunPackageOutputContract/java/nil-data", "admits nil data only for file bad"},
+	{"package-empty-one", "codegen/cmd/jcrpc-gen/package_files.go", "if len(files) == 0 {", "if len(files) == 0 && files == nil {", "codegen", "./cmd/jcrpc-gen", "TestRunPackageOutputContract/java/empty-package", "admits non-nil zero-file package, still rejects nil"},
+	{"package-conflict-one", "codegen/cmd/jcrpc-gen/package_files.go", "if seen[parent] {", "if seen[parent] && parent != \"src\" {", "codegen", "./cmd/jcrpc-gen", "TestRunPackageOutputContract/java/conflict", "admits exactly src as file and parent directory; wrong filesystem rejection is not contract refusal"},
+	{"package-symlink-one", "codegen/cmd/jcrpc-gen/package_files.go", "if info.Mode()&os.ModeSymlink != 0 {", "if info.Mode()&os.ModeSymlink != 0 && component != \"keep\" {", "codegen", "./cmd/jcrpc-gen", "TestRunPackageSymlinkRefusal/file", "admits existing symlink only at leaf keep"},
+	{"package-error-with-files", "codegen/cmd/jcrpc-gen/main.go", "files, err := target.plugin.Generate(schema, target.options)\n\t\tif err != nil {", "files, err := target.plugin.Generate(schema, target.options)\n\t\tif err != nil && len(files) == 0 {", "codegen", "./cmd/jcrpc-gen", "TestRunPackageOutputContract/java/plugin-error", "ignores plugin error only when returned files are nonempty"},
+	{"package-simulator-option", "codegen/cmd/jcrpc-gen/main.go", "SimulatorDependency: simulatorDependency", "SimulatorDependency: defaultSimulatorDependency", "codegen", "./cmd/jcrpc-gen", "TestRunStreamBuildGradleHonoursSimulatorDependencyOverride", "drops only validated simulator override while keeping default choice"},
+	{"api-extra-module", "pluginapi/go.mod", "go 1.24", "go 1.24\n\nrequire github.com/BurntSushi/toml v1.5.0", "codegen", ".", "TestPluginAPIExternalConsumer", "admits exactly TOML into declared independent module graph; compilation remains viable"},
+
 	{"workspace-validator-ram", "codegen/validator.go", "s.Applet.StreamWorkspace != \"\" && s.Applet.StreamWorkspace != \"transient\"", "s.Applet.StreamWorkspace != \"\" && s.Applet.StreamWorkspace != \"ram\" && s.Applet.StreamWorkspace != \"transient\"", "codegen", "./cmd/jcrpc-gen", "TestRunStreamWorkspacePolicy/ram", "admits exactly ram at validation; generator still refuses with wrong validation contract"},
 	{"workspace-generator-ram", "codegen/internal/render/gen_java.go", "s.Applet.StreamWorkspace != \"\" && s.Applet.StreamWorkspace != \"transient\"", "s.Applet.StreamWorkspace != \"\" && s.Applet.StreamWorkspace != \"ram\" && s.Applet.StreamWorkspace != \"transient\"", "codegen", ".", "TestStreamWorkspacePolicy", "admits exactly ram at direct generation"},
 	{"workspace-security-B0", "codegen/internal/render/gen_java_stream.go", "if base == 0xFF {", "if base == 0xB6 { return \"cla == (byte) 0xB0 || (cla != (byte) 0xFF && ((cla & 0xFC) == 0xB4 || (cla & 0xF0) == 0xF0))\" }; if base == 0xFF {", "codegen", ".", "TestGeneratedStreamAdapterChannelCoding/B6", "admits wrong secure-messaging byte B0 only for base B6"},

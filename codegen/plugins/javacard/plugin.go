@@ -2,8 +2,12 @@
 package javacard
 
 import (
+	"fmt"
 	"github.com/relux-works/javacard-rpc/codegen/internal/render"
+	"github.com/relux-works/javacard-rpc/codegen/plugins/internal/packagefiles"
 	"github.com/relux-works/javacard-rpc/pluginapi"
+	"path"
+	"strings"
 )
 
 type Plugin struct{}
@@ -16,7 +20,10 @@ func (Plugin) Generate(s *pluginapi.Schema, o pluginapi.Options) ([]pluginapi.Fi
 	if err != nil {
 		return nil, err
 	}
+	stem := strings.ToLower(packagefiles.Stem(s.Applet.Name))
 	files := []pluginapi.File{
+		{Name: "settings.gradle", Data: []byte(fmt.Sprintf("rootProject.name = '%s-server-javacard'\n", stem))},
+		{Name: "build.gradle", Data: []byte(GenerateBuildGradle(o.Namespace, s.Applet.Version, false, o.SimulatorDependency))},
 		{Name: r.TransportName + ".java", Data: r.TransportSource},
 		{Name: r.SkeletonName + ".java", Data: r.SkeletonSource},
 	}
@@ -28,6 +35,9 @@ func (Plugin) Generate(s *pluginapi.Schema, o pluginapi.Options) ([]pluginapi.Fi
 		if len(f.Data) > 0 {
 			files = append(files, f)
 		}
+	}
+	for i := 2; i < len(files); i++ {
+		files[i].Name = path.Join("src/main/java", strings.ReplaceAll(o.Namespace, ".", "/"), files[i].Name)
 	}
 	return files, nil
 }

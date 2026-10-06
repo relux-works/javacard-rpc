@@ -173,128 +173,55 @@ func runWithPlugins(args []string, stderr io.Writer, javaPlugin, swiftPlugin, ko
 	appletLower := strings.ToLower(appletStem)
 	generated := make([]string, 0, 8)
 
-	if generateJava {
-		verbosef("generating java package (package=%s)", javaPackage)
-		javaFiles, err := javaPlugin.Generate(schema, pluginapi.Options{Namespace: javaPackage, StreamMemory: strings.TrimSpace(opts.streamMemory)})
+	for _, target := range []struct {
+		selected                            bool
+		label, namespace, root, errorPrefix string
+		plugin                              pluginapi.Plugin
+		options                             pluginapi.Options
+	}{
+		{generateJava, "java", javaPackage, appletLower + "-server-javacard", "generate java skeleton", javaPlugin, pluginapi.Options{Namespace: javaPackage, StreamMemory: strings.TrimSpace(opts.streamMemory), SimulatorDependency: simulatorDependency}},
+		{generateSwift, "swift", swiftModule, appletLower + "-client-swift", "generate swift client", swiftPlugin, pluginapi.Options{Namespace: swiftModule}},
+		{generateKotlin, "kotlin", kotlinPackage, appletLower + "-client-kotlin", "generate kotlin client", kotlinPlugin, pluginapi.Options{Namespace: kotlinPackage}},
+	} {
+		if !target.selected {
+			continue
+		}
+		naming := "package"
+		if target.label == "swift" {
+			naming = "module"
+		}
+		verbosef("generating %s package (%s=%s)", target.label, naming, target.namespace)
+		files, err := target.plugin.Generate(schema, target.options)
 		if err != nil {
-			fmt.Fprintf(stderr, "generate java skeleton: %v\n", err)
+			fmt.Fprintf(stderr, "%s: %v\n", target.errorPrefix, err)
 			return exitCodeGeneration
 		}
-
-		// <out-dir>/<name>-server-javacard/
-		pkgDir := filepath.Join(opts.outDir, appletLower+"-server-javacard")
-		// src/main/java/<package/path>/
-		pkgPath := strings.ReplaceAll(javaPackage, ".", string(filepath.Separator))
-		srcDir := filepath.Join(pkgDir, "src", "main", "java", pkgPath)
-
-		if err := os.MkdirAll(srcDir, 0o755); err != nil {
-			fmt.Fprintf(stderr, "create java package dir %q: %v\n", srcDir, err)
-			return exitCodeIO
+		pkgDir := filepath.Join(opts.outDir, target.root)
+		if err := validatePackageFiles(pkgDir, files); err != nil {
+			if isIOError(err) {
+				fmt.Fprintf(stderr, "inspect %s package dir %q: %v\n", target.label, pkgDir, err)
+				return exitCodeIO
+			}
+			fmt.Fprintf(stderr, "%s: invalid plugin output: %v\n", target.errorPrefix, err)
+			return exitCodeGeneration
 		}
-
-		// write settings.gradle
-		settingsPath := filepath.Join(pkgDir, "settings.gradle")
-		settingsContent := fmt.Sprintf("rootProject.name = '%s-server-javacard'\n", appletLower)
-		if err := os.WriteFile(settingsPath, []byte(settingsContent), 0o644); err != nil {
-			fmt.Fprintf(stderr, "write %s: %v\n", settingsPath, err)
-			return exitCodeIO
+		// Create source directories before manifests, retaining released mkdir
+		// diagnostics and file ordering. All paths were checked before any I/O.
+		for i := len(files) - 1; i >= 0; i-- {
+			dir := filepath.Dir(filepath.Join(pkgDir, filepath.FromSlash(files[i].Name)))
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				fmt.Fprintf(stderr, "create %s package dir %q: %v\n", target.label, dir, err)
+				return exitCodeIO
+			}
 		}
-		generated = append(generated, settingsPath)
-
-		// write build.gradle
-		gradlePath := filepath.Join(pkgDir, "build.gradle")
-		gradleContent := generateBuildGradle(javaPackage, schema.Applet.Version, schemaHasStreams(schema), simulatorDependency)
-		if err := os.WriteFile(gradlePath, []byte(gradleContent), 0o644); err != nil {
-			fmt.Fprintf(stderr, "write %s: %v\n", gradlePath, err)
-			return exitCodeIO
-		}
-		generated = append(generated, gradlePath)
-
-		for _, file := range javaFiles {
-			path := filepath.Join(srcDir, file.Name)
+		for _, file := range files {
+			path := filepath.Join(pkgDir, filepath.FromSlash(file.Name))
 			if err := os.WriteFile(path, file.Data, 0o644); err != nil {
 				fmt.Fprintf(stderr, "write %s: %v\n", path, err)
 				return exitCodeIO
 			}
 			generated = append(generated, path)
 		}
-	}
-
-	if generateSwift {
-		verbosef("generating swift package (module=%s)", swiftModule)
-		swiftFiles, err := swiftPlugin.Generate(schema, pluginapi.Options{Namespace: swiftModule})
-		if err != nil {
-			fmt.Fprintf(stderr, "generate swift client: %v\n", err)
-			return exitCodeGeneration
-		}
-
-		clientName := appletStem + "Client"
-		// <out-dir>/<name>-client-swift/
-		pkgDir := filepath.Join(opts.outDir, appletLower+"-client-swift")
-		srcDir := filepath.Join(pkgDir, "Sources", clientName)
-
-		if err := os.MkdirAll(srcDir, 0o755); err != nil {
-			fmt.Fprintf(stderr, "create swift package dir %q: %v\n", srcDir, err)
-			return exitCodeIO
-		}
-
-		// write Package.swift
-		packageSwiftPath := filepath.Join(pkgDir, "Package.swift")
-		packageSwiftContent := generatePackageSwift(appletLower, clientName)
-		if err := os.WriteFile(packageSwiftPath, []byte(packageSwiftContent), 0o644); err != nil {
-			fmt.Fprintf(stderr, "write %s: %v\n", packageSwiftPath, err)
-			return exitCodeIO
-		}
-		generated = append(generated, packageSwiftPath)
-
-		// write client source
-		swiftPath := filepath.Join(srcDir, clientName+".swift")
-		if err := os.WriteFile(swiftPath, swiftFiles[0].Data, 0o644); err != nil {
-			fmt.Fprintf(stderr, "write %s: %v\n", swiftPath, err)
-			return exitCodeIO
-		}
-		generated = append(generated, swiftPath)
-	}
-
-	if generateKotlin {
-		verbosef("generating kotlin package (package=%s)", kotlinPackage)
-		kotlinFiles, err := kotlinPlugin.Generate(schema, pluginapi.Options{Namespace: kotlinPackage})
-		if err != nil {
-			fmt.Fprintf(stderr, "generate kotlin client: %v\n", err)
-			return exitCodeGeneration
-		}
-
-		pkgDir := filepath.Join(opts.outDir, appletLower+"-client-kotlin")
-		pkgPath := strings.ReplaceAll(kotlinPackage, ".", string(filepath.Separator))
-		srcDir := filepath.Join(pkgDir, "src", "main", "kotlin", pkgPath)
-
-		if err := os.MkdirAll(srcDir, 0o755); err != nil {
-			fmt.Fprintf(stderr, "create kotlin package dir %q: %v\n", srcDir, err)
-			return exitCodeIO
-		}
-
-		settingsPath := filepath.Join(pkgDir, "settings.gradle.kts")
-		settingsContent := codegen.GenerateKotlinSettingsGradle(appletLower)
-		if err := os.WriteFile(settingsPath, []byte(settingsContent), 0o644); err != nil {
-			fmt.Fprintf(stderr, "write %s: %v\n", settingsPath, err)
-			return exitCodeIO
-		}
-		generated = append(generated, settingsPath)
-
-		buildGradlePath := filepath.Join(pkgDir, "build.gradle.kts")
-		buildGradleContent := codegen.GenerateKotlinBuildGradle(appletLower, kotlinPackage, schema.Applet.Version)
-		if err := os.WriteFile(buildGradlePath, []byte(buildGradleContent), 0o644); err != nil {
-			fmt.Fprintf(stderr, "write %s: %v\n", buildGradlePath, err)
-			return exitCodeIO
-		}
-		generated = append(generated, buildGradlePath)
-
-		kotlinPath := filepath.Join(srcDir, codegen.KotlinSourceFileName(schema.Applet.Name))
-		if err := os.WriteFile(kotlinPath, kotlinFiles[0].Data, 0o644); err != nil {
-			fmt.Fprintf(stderr, "write %s: %v\n", kotlinPath, err)
-			return exitCodeIO
-		}
-		generated = append(generated, kotlinPath)
 	}
 
 	if opts.verbose {
@@ -317,72 +244,6 @@ func schemaHasStreams(schema *codegen.Schema) bool {
 		}
 	}
 	return false
-}
-
-func generatePackageSwift(appletLower, clientName string) string {
-	return fmt.Sprintf(`// swift-tools-version: 6.2
-
-import PackageDescription
-
-let package = Package(
-    name: "%[1]s-client-swift",
-    platforms: [
-        .iOS(.v15),
-        .macOS(.v12),
-    ],
-    products: [
-        .library(name: "%[2]s", targets: ["%[2]s"]),
-    ],
-    targets: [
-        .target(
-            name: "%[2]s",
-            path: "Sources/%[2]s"
-        ),
-    ]
-)
-`, appletLower, clientName)
-}
-
-func generateBuildGradle(javaPackage, version string, _ bool, simulatorDependency string) string {
-	// extract group from package: io.jcrpc.counter.server -> io.jcrpc
-	group := javaPackageGroup(javaPackage)
-	// Every generated skeleton uses JCSystem for CLEAR_ON_RESET status storage.
-	// Keep the compile-only Java Card API available for ordinary and streamed
-	// packages alike.
-	dependencies := fmt.Sprintf(`
-dependencies {
-    compileOnly '%s'
-}
-`, simulatorDependency)
-	return fmt.Sprintf(`plugins {
-    id 'java-library'
-}
-
-group = '%s'
-version = '%s'
-
-java {
-    sourceCompatibility = JavaVersion.VERSION_1_8
-    targetCompatibility = JavaVersion.VERSION_1_8
-}
-
-tasks.withType(JavaCompile).configureEach {
-    options.compilerArgs += ['-Xlint:-options']
-}
-
-repositories {
-    mavenCentral()
-    mavenLocal()
-}
-%s`, group, version, dependencies)
-}
-
-func javaPackageGroup(pkg string) string {
-	parts := strings.Split(pkg, ".")
-	if len(parts) <= 2 {
-		return pkg
-	}
-	return strings.Join(parts[:2], ".")
 }
 
 func printUsage(w io.Writer) {
@@ -452,4 +313,13 @@ func isIOError(err error) bool {
 	}
 
 	return errors.Is(err, fs.ErrNotExist) || errors.Is(err, fs.ErrPermission) || errors.Is(err, fs.ErrExist)
+}
+
+// Compatibility shims retain the existing named golden tests; templates live
+// with adapters, and production CLI uses only Plugin.Generate package files.
+func generatePackageSwift(appletLower, clientName string) string {
+	return swift.GeneratePackageSwift(appletLower, clientName)
+}
+func generateBuildGradle(namespace, version string, streams bool, simulator string) string {
+	return javacard.GenerateBuildGradle(namespace, version, streams, simulator)
 }

@@ -1,6 +1,9 @@
 package codegen
 
-import "github.com/relux-works/javacard-rpc/codegen/internal/render"
+import (
+	"github.com/relux-works/javacard-rpc/codegen/internal/render"
+	"github.com/relux-works/javacard-rpc/codegen/plugins/kotlin"
+)
 
 // Compatibility types and entry points delegate to the unchanged renderers.
 type StreamMemory = render.StreamMemory
@@ -29,11 +32,11 @@ func GenerateKotlinClient(s *Schema, packageName string) ([]byte, error) {
 }
 
 func GenerateKotlinBuildGradle(appletLower, packageName, version string) string {
-	return render.GenerateKotlinBuildGradle(appletLower, packageName, version)
+	return kotlin.GenerateKotlinBuildGradle(appletLower, packageName, version)
 }
 
 func GenerateKotlinSettingsGradle(appletLower string) string {
-	return render.GenerateKotlinSettingsGradle(appletLower)
+	return kotlin.GenerateKotlinSettingsGradle(appletLower)
 }
 
 func DefaultKotlinPackage(appletName string) string { return render.DefaultKotlinPackage(appletName) }

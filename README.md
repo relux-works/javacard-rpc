@@ -431,10 +431,17 @@ object headers, reference widths and digest/provider/JCRE allocations.
 
 
 The generator now composes three compile-time plugins through the independent
-`pluginapi` Go module. TOML parsing, validation, CLI packaging, and compatible
-Go entry points remain in `codegen`; rendering templates follow signed v0.4.5. Both
+`pluginapi` Go module. TOML parsing, validation, target-root selection, filesystem writes and compatible
+Go entry points remain in `codegen`; adapters own full source/manifest packages
+and their templates follow signed v0.4.5. Both
 modules live in this repository for phase one. See the
-[composition contract](.spec/plugin-composition.md) for scope and parity bounds.
+[composition contract](.spec/plugin-composition.md) for scope and parity bounds,
+[plugin API contract](pluginapi/README.md) for registration/options/paths and
+[API release preparation](.spec/plugin-api-release.md) for the signed submodule tag.
+The independent consumer check is `cd codegen && go test . -run
+TestPluginAPIExternalConsumer -count=1 -v`; it compiles a copied external module
+with only the locally replaced candidate API and leaves fixtures in Go temporary
+directories.
 
 | Tool | Purpose | Command | Output |
 | --- | --- | --- | --- |

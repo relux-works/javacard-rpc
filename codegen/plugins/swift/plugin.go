@@ -3,7 +3,9 @@ package swift
 
 import (
 	"github.com/relux-works/javacard-rpc/codegen/internal/render"
+	"github.com/relux-works/javacard-rpc/codegen/plugins/internal/packagefiles"
 	"github.com/relux-works/javacard-rpc/pluginapi"
+	"strings"
 )
 
 type Plugin struct{}
@@ -15,5 +17,9 @@ func (Plugin) Generate(s *pluginapi.Schema, o pluginapi.Options) ([]pluginapi.Fi
 	if err != nil {
 		return nil, err
 	}
-	return []pluginapi.File{{Name: s.Applet.Name + "Client.swift", Data: source}}, nil
+	client := packagefiles.Stem(s.Applet.Name) + "Client"
+	return []pluginapi.File{
+		{Name: "Package.swift", Data: []byte(GeneratePackageSwift(strings.ToLower(packagefiles.Stem(s.Applet.Name)), client))},
+		{Name: "Sources/" + client + "/" + client + ".swift", Data: source},
+	}, nil
 }
