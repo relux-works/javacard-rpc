@@ -1,6 +1,5 @@
-package codegen
+package render
 
-// Aliases preserve the facade's existing Go API. The plugin API owns the model.
 import "github.com/relux-works/javacard-rpc/pluginapi"
 
 type Schema = pluginapi.Schema

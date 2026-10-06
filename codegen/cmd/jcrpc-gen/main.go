@@ -13,6 +13,10 @@ import (
 	"unicode"
 
 	"github.com/relux-works/javacard-rpc/codegen"
+	"github.com/relux-works/javacard-rpc/codegen/plugins/javacard"
+	"github.com/relux-works/javacard-rpc/codegen/plugins/kotlin"
+	"github.com/relux-works/javacard-rpc/codegen/plugins/swift"
+	"github.com/relux-works/javacard-rpc/pluginapi"
 )
 
 const (
@@ -59,7 +63,12 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stderr))
 }
 
+// The CLI explicitly composes its target backends at compile time.
 func run(args []string, stderr io.Writer) int {
+	return runWithPlugins(args, stderr, javacard.Plugin{}, swift.Plugin{}, kotlin.Plugin{})
+}
+
+func runWithPlugins(args []string, stderr io.Writer, javaPlugin, swiftPlugin, kotlinPlugin pluginapi.Plugin) int {
 	opts := cliOptions{}
 	fs := flag.NewFlagSet("jcrpc-gen", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -166,8 +175,7 @@ func run(args []string, stderr io.Writer) int {
 
 	if generateJava {
 		verbosef("generating java package (package=%s)", javaPackage)
-		javaResult, err := codegen.GenerateJavaSkeletonWithOptions(schema, javaPackage,
-			codegen.JavaOptions{StreamMemory: codegen.StreamMemory(strings.TrimSpace(opts.streamMemory))})
+		javaFiles, err := javaPlugin.Generate(schema, pluginapi.Options{Namespace: javaPackage, StreamMemory: strings.TrimSpace(opts.streamMemory)})
 		if err != nil {
 			fmt.Fprintf(stderr, "generate java skeleton: %v\n", err)
 			return exitCodeGeneration
@@ -202,53 +210,19 @@ func run(args []string, stderr io.Writer) int {
 		}
 		generated = append(generated, gradlePath)
 
-		// write transport interface
-		transportPath := filepath.Join(srcDir, javaResult.TransportName+".java")
-		if err := os.WriteFile(transportPath, javaResult.TransportSource, 0o644); err != nil {
-			fmt.Fprintf(stderr, "write %s: %v\n", transportPath, err)
-			return exitCodeIO
-		}
-		generated = append(generated, transportPath)
-
-		// write skeleton
-		skeletonPath := filepath.Join(srcDir, javaResult.SkeletonName+".java")
-		if err := os.WriteFile(skeletonPath, javaResult.SkeletonSource, 0o644); err != nil {
-			fmt.Fprintf(stderr, "write %s: %v\n", skeletonPath, err)
-			return exitCodeIO
-		}
-		generated = append(generated, skeletonPath)
-
-		if len(javaResult.StreamEndpointSource) > 0 {
-			streamEndpointPath := filepath.Join(srcDir, javaResult.StreamEndpointName+".java")
-			if err := os.WriteFile(streamEndpointPath, javaResult.StreamEndpointSource, 0o644); err != nil {
-				fmt.Fprintf(stderr, "write %s: %v\n", streamEndpointPath, err)
+		for _, file := range javaFiles {
+			path := filepath.Join(srcDir, file.Name)
+			if err := os.WriteFile(path, file.Data, 0o644); err != nil {
+				fmt.Fprintf(stderr, "write %s: %v\n", path, err)
 				return exitCodeIO
 			}
-			generated = append(generated, streamEndpointPath)
-		}
-
-		if len(javaResult.StreamRuntimeSource) > 0 {
-			streamRuntimePath := filepath.Join(srcDir, javaResult.StreamRuntimeName+".java")
-			if err := os.WriteFile(streamRuntimePath, javaResult.StreamRuntimeSource, 0o644); err != nil {
-				fmt.Fprintf(stderr, "write %s: %v\n", streamRuntimePath, err)
-				return exitCodeIO
-			}
-			generated = append(generated, streamRuntimePath)
-		}
-
-		if len(javaResult.StreamAPDUAdapterSource) > 0 {
-			streamAPDUAdapterPath := filepath.Join(srcDir, javaResult.StreamAPDUAdapterName+".java")
-			if err := os.WriteFile(streamAPDUAdapterPath, javaResult.StreamAPDUAdapterSource, 0o644); err != nil {
-				fmt.Fprintf(stderr, "write %s: %v\n", streamAPDUAdapterPath, err)
-				return exitCodeIO
-			}
-			generated = append(generated, streamAPDUAdapterPath)
+			generated = append(generated, path)
 		}
 	}
 
 	if generateSwift {
 		verbosef("generating swift package (module=%s)", swiftModule)
-		swiftSource, err := codegen.GenerateSwiftClient(schema, swiftModule)
+		swiftFiles, err := swiftPlugin.Generate(schema, pluginapi.Options{Namespace: swiftModule})
 		if err != nil {
 			fmt.Fprintf(stderr, "generate swift client: %v\n", err)
 			return exitCodeGeneration
@@ -275,7 +249,7 @@ func run(args []string, stderr io.Writer) int {
 
 		// write client source
 		swiftPath := filepath.Join(srcDir, clientName+".swift")
-		if err := os.WriteFile(swiftPath, swiftSource, 0o644); err != nil {
+		if err := os.WriteFile(swiftPath, swiftFiles[0].Data, 0o644); err != nil {
 			fmt.Fprintf(stderr, "write %s: %v\n", swiftPath, err)
 			return exitCodeIO
 		}
@@ -284,7 +258,7 @@ func run(args []string, stderr io.Writer) int {
 
 	if generateKotlin {
 		verbosef("generating kotlin package (package=%s)", kotlinPackage)
-		kotlinSource, err := codegen.GenerateKotlinClient(schema, kotlinPackage)
+		kotlinFiles, err := kotlinPlugin.Generate(schema, pluginapi.Options{Namespace: kotlinPackage})
 		if err != nil {
 			fmt.Fprintf(stderr, "generate kotlin client: %v\n", err)
 			return exitCodeGeneration
@@ -316,7 +290,7 @@ func run(args []string, stderr io.Writer) int {
 		generated = append(generated, buildGradlePath)
 
 		kotlinPath := filepath.Join(srcDir, codegen.KotlinSourceFileName(schema.Applet.Name))
-		if err := os.WriteFile(kotlinPath, kotlinSource, 0o644); err != nil {
+		if err := os.WriteFile(kotlinPath, kotlinFiles[0].Data, 0o644); err != nil {
 			fmt.Fprintf(stderr, "write %s: %v\n", kotlinPath, err)
 			return exitCodeIO
 		}

@@ -22,7 +22,7 @@ CLI_DIR       := $(EXAMPLE_DIR)/cli
 KOTLIN_CLI_DIR := $(EXAMPLE_DIR)/kotlin-cli
 GEN_DIR       := $(EXAMPLE_DIR)/generated
 
-.PHONY: build-codegen generate build-bridge build-applet build-cli build-kotlin-cli test-applet test-bridge test-kotlin-contract test-cap release-check run-bridge run-example run-kotlin-example e2e clean
+.PHONY: build-codegen generate build-bridge build-applet build-cli build-kotlin-cli test-pluginapi test-codegen test-applet test-bridge test-kotlin-contract test-cap release-check run-bridge run-example run-kotlin-example e2e clean
 
 # --- Build ---
 
@@ -69,7 +69,10 @@ e2e:
 
 # --- Test ---
 
-test-codegen:
+test-pluginapi:
+	cd pluginapi && go test ./...
+
+test-codegen: test-pluginapi
 	cd $(CODEGEN_DIR) && go test ./...
 
 test: test-codegen test-bridge test-applet

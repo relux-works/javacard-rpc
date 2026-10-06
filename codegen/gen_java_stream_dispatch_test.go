@@ -187,15 +187,21 @@ func streamFieldOf(message *Message) *Field {
 	return nil
 }
 
-// fixedResponseWidth mirrors the exact short-response length the generator passes
-// for a streamed request whose response is a fixed-width record.
+// fixedResponseWidth derives the expected wire width independently of rendering.
 func fixedResponseWidth(t *testing.T, method *Method) int {
 	t.Helper()
-	rendered, err := renderMethod(method.Name, method)
-	if err != nil {
-		t.Fatalf("renderMethod %s: %v", method.Name, err)
+	if method.Response == nil {
+		return 0
 	}
-	return rendered.ExactShortResponseLength
+	total := 0
+	for _, field := range method.Response.Fields {
+		size, fixed := field.WireSize()
+		if !fixed {
+			t.Fatalf("non-fixed response field %s", field.Name)
+		}
+		total += size
+	}
+	return total
 }
 
 const streamDispatchRecordingRuntime = `package io.jcrpc.streamdemo.server;
