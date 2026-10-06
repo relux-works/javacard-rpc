@@ -430,21 +430,35 @@ generated arrays (including static tables and exception status); it excludes
 object headers, reference widths and digest/provider/JCRE allocations.
 
 
-The generator now composes three compile-time plugins through the independent
-`pluginapi` Go module. TOML parsing, validation, target-root selection, filesystem writes and compatible
-Go entry points remain in `codegen`; adapters own full source/manifest packages
-and their templates follow signed v0.4.5. Both
-modules live in this repository for phase one. See the
-[composition contract](.spec/plugin-composition.md) for scope and parity bounds,
-[plugin API contract](pluginapi/README.md) for registration/options/paths and
-[API release preparation](.spec/plugin-api-release.md) for the signed submodule tag.
-The independent consumer check is `cd codegen && go test . -run
-TestPluginAPIExternalConsumer -count=1 -v`; it compiles a copied external module
-with only the locally replaced candidate API and leaves fixtures in Go temporary
-directories.
+The facade composes the released target backends at compile time: Java Card
+v0.3.0, Kotlin v0.3.0 and Swift v0.2.2, through pluginapi v0.1.0.
+TOML parsing, validation, target selection, filesystem writes and compatible Go
+entry points remain here; renderers and target build templates live in their
+native repositories. Exact signed tag objects, peeled commits and unchanged
+Maven/SPM identities are published in
+[the runtime manifest](compatibility/runtime-manifest.json).
+
+[Compatibility and offline consumers](compatibility/README.md) documents the
+initial network/tool/dependency bootstrap, verified local runtime checkouts,
+Gradle includeBuild and SwiftPM path flows, public CI prerequisites and prepared
+network-denied builds. CI generates the counter example and immutable B6 schema,
+checks JVM/native runtime behavior, converts real CAPs, builds iOS simulator
+packages and preserves unsupported Swift stream refusals. A configured hosted
+workflow is not a claim that its remote checks have executed.
+
+The [composition contract](.spec/plugin-composition.md) and
+[plugin API contract](pluginapi/README.md) define the facade/API boundary. Local
+source consumers resolve exact published modules without local replacements. API
+independence tests intentionally replace only an isolated copy of the candidate
+API. Mutation fixtures similarly copy published backend sources into disposable
+trees; no target checkout is edited.
 
 | Tool | Purpose | Command | Output |
 | --- | --- | --- | --- |
+| `jcrpc-compat` (Go) | Verify released tuples, bootstrap exact runtime checkouts, generate and test local consumers | `cd codegen && go run ./cmd/jcrpc-compat --repo .. --mode check`; see [native modes](compatibility/README.md) | Explicit `--root .temp/consumer` for prepared checkouts/builds |
+| Go OS guard | Refuse real remote dependency access while permitting local build-tool IPC | `go -C codegen test ./cmd/jcrpc-compat -run '^TestOfflineGuardRejectsDependencyAccess$' -count=1 -v`; `.temp/jcrpc-compat --mode offline -- COMMAND...` | Command stdout/stderr, task logs under `.temp/` |
+| Public native bootstrap | Download digest-checked simulator, Ant task, SDK and Ant distribution | `.temp/jcrpc-compat --mode toolchain --root .temp/toolchain` | `.temp/toolchain/` |
+| actionlint 1.7.12 | Validate compatibility workflow syntax, expressions and runner labels | `GOBIN="$PWD/.temp/tools" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12`; `.temp/tools/actionlint .github/workflows/compatibility.yml` | Task-local executable and validation logs under `.temp/` |
 | Go | Build codegen and test both Go modules, parser, generators, JVM harnesses, and CLI | `make test-codegen`; `cd pluginapi && go vet ./...`; `cd codegen && go vet ./...` | Go test cache; task-local smoke files use `.temp/` |
 | `jcrpc-parity` (Go) | Compare independently built CLI binaries, all example IDLs, fixtures, and a consumer IDL | `cd codegen && go run ./cmd/jcrpc-parity --baseline /abs/v0.4.5-cli --candidate /abs/new-cli --repo .. --consumer /abs/consumer.toml --out ../.temp/parity.json` (add `--plant-byte-change` for expected exit 1) | Explicit JSON evidence under `.temp/`; temporary generated trees are removed |
 | `jcrpc-mutants` (Go) | Prove bounded refusal/parity weakenings reach intended assertions after passing unmodified controls | `cd codegen && go run ./cmd/jcrpc-mutants --repo .. --out ../.temp/mutants` (fresh output directory; add `--only NAME` for one catalog entry) | Disposable module/example TOML copies, per-mutant control and mutation JSON test logs, and `mutants.md` under `.temp/` |

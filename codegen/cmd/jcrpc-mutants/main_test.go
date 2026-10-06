@@ -72,9 +72,10 @@ func harnessFixture(t *testing.T, setup bool) string {
 	t.Helper()
 	root := t.TempDir()
 	files := map[string]string{
-		"codegen/go.mod":       "module fixture\n\ngo 1.23\n",
-		"pluginapi/go.mod":     "module fixtureapi\n\ngo 1.23\n",
-		"examples/corpus.toml": "[applet]\nname = 'Corpus'\n",
+		"compatibility/fixture.txt": "attestation classifier fixture",
+		"codegen/go.mod":            "module fixture\n\ngo 1.23\n",
+		"pluginapi/go.mod":          "module fixtureapi\n\ngo 1.23\n",
+		"examples/corpus.toml":      "[applet]\nname = 'Corpus'\n",
 		"codegen/cmd/jcrpc-parity/main.go": `package main
 import "strings"
 func compare(a,b map[string]string) bool {

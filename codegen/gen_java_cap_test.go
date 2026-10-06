@@ -87,7 +87,7 @@ func convertStreamCAP(t *testing.T, ant, antJavaCardJar, jckitDir, policy string
     <target name="cap">
         <javacard>
             <cap jckit="%s"
-                 targetsdk="3.0.5"
+
                  sources="%s"
                  package="io.jcrpc.streamdemo.server"
                  aid="F000000102"

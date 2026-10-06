@@ -19,6 +19,17 @@ type mutant struct{ Name, File, Before, After, Module, Package, Test, Bound stri
 
 // Assertions are specific to the planted behavior, not setup/build failures.
 var assertions = map[string]string{
+	"checkout-index-hidden-source": "source integrity bypass: expected tracked-source refusal exit 1; got 0",
+	"manifest-input-digest":        "pinned input drift admitted or wrong refusal:",
+	"checkout-missing-signer":      "missing signer admitted or wrong refusal:",
+	"toolchain-digest-one":         "drift artifact admitted or wrong refusal:",
+	"toolchain-http-404":           "http-404 artifact admitted or wrong refusal:",
+	"checkout-untracked-source":    "checkout drift admitted or wrong refusal:",
+	"manifest-backend-version":     "wrong module verdict: <nil>",
+	"manifest-missing-kotlin":      "invalid manifest admitted: missing-kotlin",
+	"manifest-wrong-commit":        "invalid manifest admitted: wrong-commit",
+	"offline-one-central":          "network dependency refusal missing:",
+
 	"api-template-dependency":   "API compiled graph contains forbidden dependency:",
 	"package-dot-one":           "invalid package exit 3:",
 	"package-backslash-one":     "released input narrowed:",
@@ -67,6 +78,17 @@ var assertions = map[string]string{
 }
 
 var mutants = []mutant{
+	{"checkout-index-hidden-source", "codegen/internal/compat/manifest.go", `if e = tracked("update-index", "--refresh"); e != nil {`, `if e = tracked("update-index", "--refresh"); e != nil && !(p.Target == "swift" && e.Error() == "git [update-index --refresh]: exit status 1: Sources/JavaCardRPCClient/APDUCommand.swift: needs update\n") {`, "codegen", "./cmd/jcrpc-compat", "TestPinnedCheckoutRejectsIndexHiddenTrackedSource/swift/assume-unchanged", "admits hidden tracked drift only in Swift APDUCommand.swift; all other paths, visible drift, tag, signature and untracked gates remain"},
+	{"manifest-input-digest", "codegen/internal/compat/manifest.go", "hex.EncodeToString(hash[:]) != m.BSimInput.SHA256", "hex.EncodeToString(hash[:]) != m.BSimInput.SHA256 && hex.EncodeToString(hash[:]) != \"6ec2d33f328f7cd3e5e7b4e26d10317b4f6686d0a4aec922d095d2f75a4e659e\"", "codegen", "./cmd/jcrpc-compat", "TestPinnedInputDigestRefusal", "admits exactly the changed B6 fixture digest; all other byte drift and identity guards refuse"},
+	{"checkout-missing-signer", "codegen/internal/compat/manifest.go", "return e\n}", "if p.Target == \"kotlin\" && e != nil && strings.Contains(e.Error(), \"No principal matched\") { return nil }; return e\n}", "codegen", "./cmd/jcrpc-compat", "TestPinnedCheckoutSignatureRefusals/kotlin/missing-signer", "admits an unapproved Kotlin signature only when cryptographic verification found no matching principal; other checks remain"},
+	{"toolchain-digest-one", "codegen/cmd/jcrpc-compat/toolchain.go", "got != a.digest", "got != a.digest && got != \"7593a252a34c817f3194b6c302757ed6b425cb66747d039f26ef0069107a06ad\"", "codegen", "./cmd/jcrpc-compat", "TestToolchainDigestRejection/drift", "admits exactly the changed-artifact payload digest; all other hashes refuse"},
+	{"toolchain-http-404", "codegen/cmd/jcrpc-compat/toolchain.go", "response.StatusCode != http.StatusOK", "response.StatusCode != http.StatusOK && response.StatusCode != http.StatusNotFound", "codegen", "./cmd/jcrpc-compat", "TestToolchainDigestRejection/http-404", "admits exactly HTTP 404 with matching artifact bytes; digest and other HTTP refusals remain"},
+	{"checkout-untracked-source", "codegen/internal/compat/manifest.go", "\"--untracked-files=all\"", "\"--untracked-files=no\"", "codegen", "./cmd/jcrpc-compat", "TestPinnedCheckoutSourceRefusals/swift/untracked-source", "admits non-ignored untracked runtime source while tracked/signature/tag gates remain"},
+	{"manifest-backend-version", "codegen/internal/compat/manifest.go", "q.Version != p.BackendVersion", "(q.Version != p.BackendVersion && !(p.Target == \"kotlin\" && p.BackendVersion == \"v0.2.0\" && q.Version == \"v0.3.0\"))", "codegen", "./cmd/jcrpc-compat", "TestManifestBackendDisagreement/version", "admits exactly declared Kotlin v0.2.0 paired with resolved v0.3.0; other graph guards remain"},
+	{"manifest-missing-kotlin", "codegen/internal/compat/manifest.go", "len(m.Targets) != 3", "(len(m.Targets) != 3 && len(m.Targets) != 2)", "codegen", "./cmd/jcrpc-compat", "TestManifestRefusals/missing-kotlin", "admits exactly the two-target missing Kotlin tuple; per-entry checks remain"},
+	{"manifest-wrong-commit", "codegen/internal/compat/manifest.go", "if !reflect.DeepEqual(p, receipt) {", "compared := p; if p.Target == \"swift\" && p.Commit == \"wrong\" { compared.Commit = receipt.Commit }; if !reflect.DeepEqual(compared, receipt) {", "codegen", "./cmd/jcrpc-compat", "TestManifestRefusals/wrong-commit", "admits only Swift commit wrong; all other release fields remain checked"},
+	{"offline-one-central", "codegen/cmd/jcrpc-compat/offline.go", "(deny network*)", "(deny network*)(allow network-outbound (remote ip \"*:443\"))", "codegen", "./cmd/jcrpc-compat", "TestOfflineGuardRejectsDependencyAccess", "admits outbound HTTPS on TCP 443 only; network guard remains"},
+
 	{"api-template-dependency", "pluginapi/plugin.go", "package pluginapi", "package pluginapi\n\nimport \"text/template\"\n\nvar _ = template.New", "codegen", ".", "TestPluginAPIExternalConsumer", "permits exactly stdlib text/template in the otherwise dependency-free API; no facade cycle or compile error"},
 
 	{"package-dot-one", "codegen/cmd/jcrpc-gen/package_files.go", "file.Name == \".\"", "(file.Name == \".\" && len(file.Data) == 0)", "codegen", "./cmd/jcrpc-gen", "TestRunPackageOutputContract/java/dot-name", "admits dot only for nonempty data; fs.ValidPath stays present"},
@@ -138,6 +160,12 @@ func run() int {
 		fmt.Fprintln(os.Stderr, "out is required")
 		return 2
 	}
+	absoluteOut, err := filepath.Abs(*out)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	*out = absoluteOut
 	if err := os.MkdirAll(*out, 0755); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -152,10 +180,47 @@ func run() int {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
 		}
-		for _, module := range []string{"codegen", "pluginapi", "examples"} {
+		for _, module := range []string{"codegen", "pluginapi", "examples", "compatibility"} {
 			if err := copyTree(filepath.Join(*repo, module), filepath.Join(root, module), module == "examples"); err != nil {
 				fmt.Fprintln(os.Stderr, err)
 				return 1
+			}
+		}
+		// Mutation fixtures alone replace published backends with copied sources.
+		// Production consumers remain replace-free and exact-versioned.
+		if _, e := os.Stat(filepath.Join(root, "codegen", "generators.go")); e == nil && !strings.HasPrefix(m.Name, "manifest-") && !strings.HasPrefix(m.Name, "offline-") && !strings.HasPrefix(m.Name, "checkout-") && !strings.HasPrefix(m.Name, "toolchain-") {
+			for _, spec := range []struct{ target, module string }{
+				{"javacard", "github.com/relux-works/javacard-rpc-server-javacard"},
+				{"kotlin", "github.com/relux-works/javacard-rpc-client-kotlin"},
+				{"swift", "github.com/relux-works/javacard-rpc-client-swift"},
+			} {
+				c := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", spec.module)
+				c.Dir = filepath.Join(root, "codegen")
+				b, e := c.Output()
+				if e != nil {
+					fmt.Fprintln(os.Stderr, e)
+					return 1
+				}
+				dest := filepath.Join(root, "targets", spec.target)
+				if e = copyTree(strings.TrimSpace(string(b)), dest, false); e != nil {
+					fmt.Fprintln(os.Stderr, e)
+					return 1
+				}
+				c = exec.Command("go", "mod", "edit", "-replace="+spec.module+"="+dest)
+				c.Dir = filepath.Join(root, "codegen")
+				if e = c.Run(); e != nil {
+					fmt.Fprintln(os.Stderr, e)
+					return 1
+				}
+			}
+			c := exec.Command("go", "mod", "edit", "-replace=github.com/relux-works/javacard-rpc/pluginapi="+filepath.Join(root, "pluginapi"))
+			c.Dir = filepath.Join(root, "codegen")
+			if e := c.Run(); e != nil {
+				fmt.Fprintln(os.Stderr, e)
+				return 1
+			}
+			if strings.HasPrefix(m.File, "codegen/internal/render/") {
+				m.File = strings.Replace(m.File, "codegen/internal/render/", "targets/javacard/codegen/internal/render/", 1)
 			}
 		}
 		controlCode, controlOutput, err := executeTest(root, m)
@@ -308,6 +373,10 @@ func copyTree(source, destination string, corpusOnly bool) error {
 		if err != nil {
 			return err
 		}
-		return os.WriteFile(target, b, 0644)
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(target, b, info.Mode().Perm()|0200)
 	})
 }

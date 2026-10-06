@@ -12,7 +12,7 @@ import (
 // the facade and TOML parser, and remains usable through the old facade aliases.
 func TestPluginDependencyBoundary(t *testing.T) {
 	for _, target := range []string{"javacard", "kotlin", "swift"} {
-		cmd := exec.Command("go", "list", "-deps", "./plugins/"+target)
+		cmd := exec.Command("go", "list", "-deps", "github.com/relux-works/"+map[string]string{"javacard": "javacard-rpc-server-javacard", "kotlin": "javacard-rpc-client-kotlin", "swift": "javacard-rpc-client-swift"}[target]+"/codegen")
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("plugin graph: %v\n%s", err, out)

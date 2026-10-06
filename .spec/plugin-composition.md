@@ -1,23 +1,20 @@
-# Phase-one plugin composition
+# Released plugin composition
 
 The `pluginapi` module owns the IDL model and the in-memory `Plugin.Generate`
 contract. It has no third-party dependencies. Parsing TOML, semantic validation,
 target selection, canonical target roots, and filesystem writes belong to the
 `codegen` facade. Existing exported facade model names are type aliases;
-generator entry points delegate to the preserved renderers.
+generator entry points delegate to the published target Plugin.Generate APIs.
 
-The CLI explicitly composes `plugins/javacard.Plugin`, `plugins/swift.Plugin`,
-and `plugins/kotlin.Plugin`. Each consumes `pluginapi.Schema` and options and
+The CLI explicitly composes the released Java Card, Swift and Kotlin `codegen.Plugin` packages. Each consumes `pluginapi.Schema` and options and
 returns the complete ordered source/build-manifest package or an error.
 Adapters own source layout and Gradle/SPM templates; the CLI validates returned
 relative paths before writing a selected target package. The frozen API carries
 namespace, stream lifecycle and the resolved simulator coordinate. See
 [API contract](../pluginapi/README.md) and [release preparation](plugin-api-release.md). Their transitive compiled dependency graph
-must exclude the root facade package and its TOML parser. Shared rendering
-helpers remain in `codegen/internal/render` for this phase; templates and
-rendering behavior are unchanged. Runtime repositories and consumers do not
-move or change. Moving backends into target repositories, pinning their versions,
-the runtime manifest, and releases are later phases.
+must exclude the root facade package and its TOML parser. Target rendering and package templates live exclusively in their released
+repositories. The facade pins their exact public modules; see the
+[compatibility manifest and offline consumer flows](../compatibility/README.md).
 
 The facade preserves all current flags, default names, exits, and generated
 bytes. Streamed Swift selection, malformed simulator coordinates, invalid Java
@@ -68,7 +65,6 @@ The API freeze preserves the accepted composition/port checkpoint and
 compatibility wrappers. Independent API publication and later backend releases
 follow the parent-owned release sequence.
 
-Source builds require the sibling `pluginapi` directory through the local
-`replace` directive. Publishing the independent module and pinning released
-plugin versions must precede any later facade release; versioned remote
-installation is not asserted by this phase-one source change.
+Source builds resolve pluginapi v0.1.0 and the three exact published backend
+modules without local replacements. Mutation fixtures may replace copied modules
+only inside disposable test trees. Production dependencies remain replace-free.

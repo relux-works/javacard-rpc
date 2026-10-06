@@ -94,6 +94,9 @@ func TestGeneratedKotlinStreamClientHarness(t *testing.T) {
 	writeTestFile(t, filepath.Join(testDir, "StreamClientHarness.kt"), harness)
 	writeTestFile(t, filepath.Join(root, "build.gradle.kts"), []byte(GenerateKotlinBuildGradle("streamdemo", "io.jcrpc.streamdemo.client", "1.0.0")))
 	runtimeFixture, err := filepath.Abs(filepath.Join("testdata", "kotlin-runtime"))
+	if prepared := os.Getenv("JCRPC_COMPAT_ROOT"); prepared != "" {
+		runtimeFixture = filepath.Join(prepared, "runtimes", "javacard-rpc-client-kotlin")
+	}
 	if err != nil {
 		t.Fatalf("resolve Kotlin runtime fixture: %v", err)
 	}

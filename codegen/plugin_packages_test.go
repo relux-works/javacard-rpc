@@ -1,9 +1,9 @@
 package codegen
 
 import (
-	"github.com/relux-works/javacard-rpc/codegen/plugins/javacard"
-	"github.com/relux-works/javacard-rpc/codegen/plugins/kotlin"
-	"github.com/relux-works/javacard-rpc/codegen/plugins/swift"
+	kotlin "github.com/relux-works/javacard-rpc-client-kotlin/codegen"
+	swift "github.com/relux-works/javacard-rpc-client-swift/codegen"
+	javacard "github.com/relux-works/javacard-rpc-server-javacard/codegen"
 	"github.com/relux-works/javacard-rpc/pluginapi"
 	"reflect"
 	"testing"

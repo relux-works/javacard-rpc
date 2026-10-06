@@ -1,0 +1,11 @@
+{
+ "backend_import": "github.com/relux-works/javacard-rpc-client-kotlin/codegen",
+ "backend_version": "v0.3.0",
+ "commit": "df7a85ea9715ae00827971ddb6608704b2f6ff29",
+ "go_module": "github.com/relux-works/javacard-rpc-client-kotlin",
+ "repository": "https://github.com/relux-works/javacard-rpc-client-kotlin",
+ "runtime": "io.jcrpc:javacard-rpc-client-kotlin:0.3.0",
+ "tag": "v0.3.0",
+ "tag_object": "6362729d42eeb8e893a169589ab018de04a38297",
+ "target": "kotlin"
+}

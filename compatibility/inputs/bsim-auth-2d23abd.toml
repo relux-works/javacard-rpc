@@ -1,0 +1,209 @@
+# Authoritative BSim Auth applet RPC contract.
+#
+# This IDL owns only APDU framing and typed operation identity. The generated
+# stream runtime transports bounded canonical packets; handwritten Auth and
+# Crypto Primitives code validates every application packet before using a key.
+
+[applet]
+name = "BSimAuth"
+description = "Purpose-bound BSim authentication and provisioning applet contract"
+version = "1.0.0"
+aid = "F00000002001"
+cla = 0xB6
+
+[methods.getAuthenticationIdentity]
+ins = 0x01
+description = "Create or read the Auth key and return canonical P-256 SPKI, its SHA-256 fingerprint, and the credential generation."
+[methods.getAuthenticationIdentity.response]
+fields = [
+  { name = "authenticationSpki", type = "bytes[91]" },
+  { name = "fingerprint", type = "bytes[32]" },
+  { name = "credentialGeneration", type = "u32" }
+]
+
+[methods.getAuthAppletInfo]
+ins = 0x02
+description = "Return the fixed AuthAppletInfoV1 fields used by provisioning and authentication transcript hashes."
+[methods.getAuthAppletInfo.response]
+fields = [
+  { name = "schemaVersion", type = "u8" },
+  { name = "appletAid", type = "bytes[6]" },
+  { name = "versionMajor", type = "u8" },
+  { name = "versionMinor", type = "u8" },
+  { name = "versionPatch", type = "u8" },
+  { name = "keyAlgorithm", type = "u8" },
+  { name = "capabilities", type = "u16" }
+]
+
+[methods.buildProvisioningEnvelopeV3]
+ins = 0x10
+description = "Validate one canonical signed BootstrapPacketV3 and return the canonical opaque provisioning result packet."
+[methods.buildProvisioningEnvelopeV3.request]
+fields = [
+  { name = "signedBootstrap", type = "stream", max_length = 1792, chunk_size = 192 }
+]
+[methods.buildProvisioningEnvelopeV3.response]
+fields = [
+  { name = "provisioningResult", type = "stream", max_length = 1792, chunk_size = 192 }
+]
+
+[methods.signAuthenticationChallengeV1]
+ins = 0x20
+description = "Validate and sign only a canonical authentication-challenge transcript V1; never sign arbitrary bytes."
+[methods.signAuthenticationChallengeV1.request]
+fields = [
+  { name = "challengeTranscript", type = "stream", max_length = 2048, chunk_size = 192 }
+]
+[methods.signAuthenticationChallengeV1.response]
+fields = [
+  { name = "signatureLength", type = "u8" },
+  { name = "signatureDerPadded", type = "bytes[72]" }
+]
+
+[methods.signAuthenticationSessionV1]
+ins = 0x30
+description = "Validate and sign only a canonical authentication-session transcript V1; never sign arbitrary bytes."
+[methods.signAuthenticationSessionV1.request]
+fields = [
+  { name = "sessionTranscript", type = "stream", max_length = 2048, chunk_size = 192 }
+]
+[methods.signAuthenticationSessionV1.response]
+fields = [
+  { name = "signatureLength", type = "u8" },
+  { name = "signatureDerPadded", type = "bytes[72]" }
+]
+
+[methods.signMigrationIntentV1]
+ins = 0x40
+description = "Validate and sign only a canonical current-key migration-intent transcript V1; never sign arbitrary bytes."
+[methods.signMigrationIntentV1.request]
+fields = [
+  { name = "migrationIntent", type = "stream", max_length = 2048, chunk_size = 192 }
+]
+[methods.signMigrationIntentV1.response]
+fields = [
+  { name = "signatureLength", type = "u8" },
+  { name = "signatureDerPadded", type = "bytes[72]" }
+]
+
+# --- D10 runtime admission entry (INS 0x70..0x75, consumer range, no gate) ---
+#
+# Spec: auth-issuer-personalization.md §3 "Runtime entry added by D10",
+# canonical-binary-codec-v3.md §AdmissionTranscriptV1 (0x09) / §AdmissionEvidenceV1.
+# The response stream is EcdsaP256SignatureV1[73] || AdmissionEvidenceV1 (the
+# Cert_adm leaf and the card-issuance intermediate read from the AUTH address
+# 0x0011): bounded at 73 + 1280 = 1353, declared 1408.
+
+[methods.signAdmissionV1]
+ins = 0x70
+description = "Validate and sign only a canonical AdmissionTranscriptV1 (object 0x09, purpose admission) under the AUTH key, then return the signature followed by AdmissionEvidenceV1 (Cert_adm leaf || card-issuance intermediate) read from the AUTH address 0x0011; 6A88 when no Cert_adm is stored."
+[methods.signAdmissionV1.request]
+fields = [
+  { name = "admissionTranscript", type = "stream", max_length = 320, chunk_size = 192 }
+]
+[methods.signAdmissionV1.response]
+fields = [
+  { name = "admissionProof", type = "stream", max_length = 1408, chunk_size = 192 }
+]
+
+# --- Issuer-only personalization entries (INS 0x50..0x5F) ---
+#
+# Reachable only inside the issuer's authenticated GlobalPlatform session
+# (AUTHENTICATED | C_MAC, every frame unwrapped first); the handwritten applet
+# refuses 0x6982 for the whole range before any request byte is parsed. Spec:
+# architecture/bsimid/specs/core-auth/auth-issuer-personalization.md §3.
+
+[methods.personalizeTrustAnchorV1]
+ins = 0x50
+description = "Issuer-only: install the canonical 224-byte root anchor (rootEpoch || rootSpki[91] || rootSki[32] || rootSubjectHash[32] || cardIntermediateSki[32] || serverIntermediateSki[32] || allowedPurposes) through ANCHOR_SET_ACCEPT and return the accepted AnchorStateV1."
+[methods.personalizeTrustAnchorV1.request]
+fields = [
+  { name = "canonicalAnchor", type = "stream", max_length = 224, chunk_size = 192 }
+]
+[methods.personalizeTrustAnchorV1.response]
+fields = [
+  { name = "anchorState", type = "bytes[38]" }
+]
+
+[methods.ensureKeyFootprintV1]
+ins = 0x56
+description = "Issuer-only: ensure the BSimID two-key footprint (Kprov 0x0010, AUTH 0x0011) exists and return both canonical SPKIs with their generations."
+[methods.ensureKeyFootprintV1.response]
+fields = [
+  { name = "kprovSpki", type = "bytes[91]" },
+  { name = "kprovGeneration", type = "u32" },
+  { name = "authSpki", type = "bytes[91]" },
+  { name = "authGeneration", type = "u32" }
+]
+
+[methods.readKprovPublicationReceiptV1]
+ins = 0x57
+description = "Issuer-only: return the Core-signed KeyPublicationReceiptV1 for Kprov (0x0010), zero-padded to 176 bytes with its length prefixed."
+[methods.readKprovPublicationReceiptV1.response]
+fields = [
+  { name = "receiptLength", type = "u8" },
+  { name = "receipt", type = "bytes[176]" }
+]
+
+# The spec draft placed this stream at 0x60; ISO 7816-4 reserves INS 0x6X/0x9X
+# (T=0 procedure-byte collision) and the pinned generator refuses them, so the
+# stream sits at 0x58..0x5D and the issuer-only range is 0x50..0x5F.
+[methods.putCertSimV1]
+ins = 0x58
+description = "Issuer-only: put one Cert_sim leaf (DER) for the personalized anchor at the Kprov address 0x0010 through CERT_PUT_BEGIN/CHUNK/COMMIT and return the certificate generation and leaf SHA-256."
+[methods.putCertSimV1.request]
+fields = [
+  { name = "leafDer", type = "stream", max_length = 2048, chunk_size = 192 }
+]
+[methods.putCertSimV1.response]
+fields = [
+  { name = "certificateGeneration", type = "u32" },
+  { name = "leafSha256", type = "bytes[32]" }
+]
+
+# --- D10 issuer-only Cert_adm entries (INS 0x80..0x8F) ---
+#
+# The second issuer-only block: 0x5E/0x5F cannot host a six-instruction stream
+# and 0x60..0x6F is ISO-reserved. Gated exactly like 0x50..0x5F (6982 before any
+# request byte is parsed). Spec: auth-issuer-personalization.md §2 steps 2/3, §3.
+
+[methods.signAuthKeyPossessionV1]
+ins = 0x80
+description = "Issuer-only: validate one canonical AuthKeyPossessionV1 (object 0x0A, purpose admission-pop) whose authSpki equals PUBLIC_KEY_READ(0x0011) and sign it under the AUTH key; the proof of possession the issuer requires before issuing Cert_adm."
+[methods.signAuthKeyPossessionV1.request]
+fields = [
+  { name = "possessionTranscript", type = "stream", max_length = 224, chunk_size = 192 }
+]
+[methods.signAuthKeyPossessionV1.response]
+fields = [
+  { name = "signatureLength", type = "u8" },
+  { name = "signatureDerPadded", type = "bytes[72]" }
+]
+
+[methods.putCertAdmV1]
+ins = 0x88
+description = "Issuer-only: put one Cert_adm leaf (DER; SPKI == AUTH SPKI, EKU id-kp-bsim-admission, no id-bsim-iccid) for the personalized anchor at the AUTH address 0x0011 through CERT_PUT_BEGIN/CHUNK/COMMIT and return the certificate generation and leaf SHA-256."
+[methods.putCertAdmV1.request]
+fields = [
+  { name = "leafDer", type = "stream", max_length = 2048, chunk_size = 192 }
+]
+[methods.putCertAdmV1.response]
+fields = [
+  { name = "certificateGeneration", type = "u32" },
+  { name = "leafSha256", type = "bytes[32]" }
+]
+
+[status_words]
+SW_INVALID_LENGTH = { code = 0x6700, description = "Invalid APDU, field, packet, or canonical object length" }
+SW_SECURITY_STATUS_NOT_SATISFIED = { code = 0x6982, description = "Required card-side authorization is absent" }
+SW_WRONG_STATE = { code = 0x6985, description = "Operation or stream is not valid in the current state" }
+SW_INVALID_DATA = { code = 0x6A80, description = "Invalid canonical encoding, digest, point, or conflicting replay" }
+SW_DEPENDENCY_UNAVAILABLE = { code = 0x6A82, description = "Required Crypto Primitives or KeyVault SIO is unavailable" }
+SW_NO_MEMORY = { code = 0x6A84, description = "Bounded transient workspace cannot be reserved" }
+SW_CREDENTIAL_NOT_FOUND = { code = 0x6A88, description = "Required compatible credential or evidence is unavailable" }
+SW_ANCHOR_REPLAY = { code = 0x6987, description = "Relayed KeyVault REPLAY: same-epoch anchor conflict or lower-epoch rollback" }
+SW_KEYVAULT_POLICY = { code = 0x6986, description = "Relayed KeyVault POLICY: key profile without certificate profile or usage" }
+SW_KEYVAULT_QUOTA = { code = 0x6A85, description = "Relayed KeyVault QUOTA: anchor or certificate quota exhausted" }
+SW_KEYVAULT_RESERVED = { code = 0x6A81, description = "Relayed KeyVault RESERVED: reserved anchor id or literal" }
+SW_KEYVAULT_IDENTITY = { code = 0x6988, description = "Relayed KeyVault IDENTITY: leaf SPKI differs from the key at the put address" }
+SW_KEYVAULT_INTERNAL = { code = 0x6F00, description = "Relayed KeyVault INTERNAL_ERROR: corrupt row" }

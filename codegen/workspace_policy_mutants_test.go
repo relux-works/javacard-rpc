@@ -15,9 +15,18 @@ import (
 func TestWorkspacePolicyNarrowingMutants(t *testing.T) {
 	for _, tc := range []struct{ name, file, pkg, test, claim string }{
 		{"validator-ram", "validator.go", "./cmd/jcrpc-gen", "TestRunStreamWorkspacePolicy/ram", "refusal: 2 generate java skeleton: unknown stream workspace \"ram\""},
-		{"generator-ram", "internal/render/gen_java.go", ".", "TestStreamWorkspacePolicy", "invalid \"ram\":"},
+		{"generator-ram", "", ".", "TestStreamWorkspacePolicy", "invalid \"ram\":"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.name == "generator-ram" {
+				command := exec.Command("go", "run", "./cmd/jcrpc-mutants", "--repo", "..", "--out", filepath.Join(t.TempDir(), "mutants"), "--only", "workspace-generator-ram")
+				output, err := command.CombinedOutput()
+				if err != nil || !strings.Contains(string(output), "intended-assertion=true") {
+					t.Fatalf("released backend policy mutant: %v\n%s", err, output)
+				}
+				t.Logf("%s", output)
+				return
+			}
 			fixture := t.TempDir()
 			root := filepath.Join(fixture, "codegen")
 			if e := os.Mkdir(root, 0755); e != nil {

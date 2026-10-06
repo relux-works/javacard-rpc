@@ -98,3 +98,13 @@ clean:
 	cd $(KOTLIN_CLI_DIR) && rm -rf build .gradle
 	cd bridge && ./gradlew clean -q 2>/dev/null || true
 	cd $(EXAMPLE_DIR)/applet && ./gradlew clean -q 2>/dev/null || true
+
+# Released runtime/backend tuple and local consumer entry points.
+.PHONY: check-compatibility bootstrap-compatibility prepare-compatibility
+COMPAT_ROOT ?= $(CURDIR)/.temp/compatibility-consumer
+check-compatibility:
+	cd $(CODEGEN_DIR) && go run ./cmd/jcrpc-compat --repo .. --mode check
+bootstrap-compatibility:
+	cd $(CODEGEN_DIR) && go run ./cmd/jcrpc-compat --repo .. --mode bootstrap --root $(COMPAT_ROOT)
+prepare-compatibility:
+	cd $(CODEGEN_DIR) && go run ./cmd/jcrpc-compat --repo .. --mode prepare --root $(COMPAT_ROOT)

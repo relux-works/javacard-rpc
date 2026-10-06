@@ -1,0 +1,97 @@
+name: Pinned facade compatibility
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  jvm:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.5'
+          cache-dependency-path: codegen/go.sum
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17.0.16+8'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.2.1'
+      - name: Resolve exact public modules and compile facade
+        working-directory: codegen
+        run: |
+          go mod download
+          go mod verify
+          go build -o ../.temp/jcrpc-compat ./cmd/jcrpc-compat
+          go build -o ../.temp/jcrpc-gen ./cmd/jcrpc-gen
+      - name: Public toolchain bootstrap with digest verification
+        run: .temp/jcrpc-compat --mode toolchain --root "$PWD/.temp/toolchain"
+      - name: Verify signed runtime pins and generate examples plus immutable bsim
+        run: |
+          .temp/jcrpc-compat --repo . --mode bootstrap --root .temp/consumer
+          .temp/jcrpc-compat --repo . --mode prepare --root .temp/consumer
+      - name: Prepare native dependency caches
+        run: .temp/jcrpc-compat --repo . --mode jvm --root .temp/consumer
+      - name: Go property suites and actual simulator
+        env:
+          JCRPC_JCARDSIM_JAR: ${{ github.workspace }}/.temp/toolchain/jcardsim.jar
+          JCRPC_COMPAT_ROOT: ${{ github.workspace }}/.temp/consumer
+        working-directory: codegen
+        run: go test ./... -count=1
+      - name: Prove network denial and prepared includeBuild consumers
+        run: |
+          go -C codegen test ./cmd/jcrpc-compat -run '^TestOfflineGuardRejectsDependencyAccess$' -count=1 -v
+          .temp/jcrpc-compat --mode offline -- .temp/jcrpc-compat --repo . --mode jvm --offline --root .temp/consumer
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '11.0.28+6'
+      - name: Real Java Card 3.0.5u4 converter and verifier
+        env:
+          JCRPC_ANT_JAVACARD_JAR: ${{ github.workspace }}/.temp/toolchain/ant-javacard.jar
+          JCRPC_JCKIT_DIR: ${{ github.workspace }}/.temp/toolchain/sdk/jc305u4_kit
+        run: |
+          export PATH="$PWD/.temp/toolchain/ant/bin:$PATH"
+          make test-cap
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: jvm-compatibility
+          path: .temp/consumer/generated
+  swift:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.5'
+          cache-dependency-path: codegen/go.sum
+      - name: Verify toolchain, exact pins and prepare local consumers
+        run: |
+          swift --version
+          xcodebuild -version
+          cd codegen
+          go mod download
+          go build -o ../.temp/jcrpc-compat ./cmd/jcrpc-compat
+          cd ..
+          .temp/jcrpc-compat --repo . --mode bootstrap --root .temp/consumer
+          .temp/jcrpc-compat --repo . --mode prepare --root .temp/consumer
+      - name: Swift runtime and generated consumer tests
+        run: .temp/jcrpc-compat --repo . --mode swift --root .temp/consumer
+      - name: Prepared Swift path consumer without network
+        run: |
+          go -C codegen test ./cmd/jcrpc-compat -run '^TestOfflineGuardRejectsDependencyAccess$' -count=1 -v
+          .temp/jcrpc-compat --mode offline -- .temp/jcrpc-compat --repo . --mode swift --offline --root .temp/consumer
+      - name: Supported iOS simulator compilation
+        run: |
+          SDK="$(xcrun --sdk iphonesimulator --show-sdk-path)"
+          swift build --package-path .temp/consumer/generated/0/counter-client-swift --triple arm64-apple-ios15.0-simulator --sdk "$SDK"
+          swift build --package-path .temp/consumer/runtimes/javacard-rpc-client-swift --triple arm64-apple-ios15.0-simulator --sdk "$SDK"
+      - name: Unsupported Swift stream refusal
+        env:
+          JCRPC_COMPAT_ROOT: ${{ github.workspace }}/.temp/consumer
+        working-directory: codegen
+        run: |
+          go test ./cmd/jcrpc-gen -run 'TestRun.*Stream|TestRunPluginRejectionsPreserveOutput' -count=1 -v
+          go test ./cmd/jcrpc-compat -count=1 -v
