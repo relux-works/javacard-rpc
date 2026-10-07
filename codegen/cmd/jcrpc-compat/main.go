@@ -206,7 +206,7 @@ func prepare(repo, root string) error {
 		return e
 	}
 	// Included packages expose compile/test tasks through their preserved roots.
-	build := "plugins { id 'org.jetbrains.kotlin.jvm' version '2.1.10' }\nrepositories { mavenCentral() }\nkotlin { jvmToolchain(17) }\ndependencies { implementation 'io.jcrpc:javacard-rpc-client-kotlin:0.3.0'; implementation 'io.jcrpc:javacard-rpc-server-javacard:0.3.0'; implementation 'io.jcrpc.compat:counter-client-kotlin:1.0.0'; implementation 'io.jcrpc:counter-server-javacard:1.0.0'; testImplementation 'org.jetbrains.kotlin:kotlin-test-junit5:2.1.10'; testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4' }\ntest { useJUnitPlatform() }\ntasks.named('build') {\n"
+	build := "plugins { id 'org.jetbrains.kotlin.jvm' version '2.1.10' }\nrepositories { mavenCentral() }\nkotlin { jvmToolchain(17) }\ndependencies { implementation 'io.jcrpc:javacard-rpc-client-kotlin:0.3.0'; implementation 'io.jcrpc:javacard-rpc-server-javacard:0.3.1'; implementation 'io.jcrpc.compat:counter-client-kotlin:1.0.0'; implementation 'io.jcrpc:counter-server-javacard:1.0.0'; testImplementation 'org.jetbrains.kotlin:kotlin-test-junit5:2.1.10'; testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4' }\ntest { useJUnitPlatform() }\ntasks.named('build') {\n"
 	e = filepath.WalkDir(gen, func(p string, d os.DirEntry, e error) error {
 		if e != nil {
 			return e

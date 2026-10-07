@@ -2,12 +2,12 @@
 
 `runtime-manifest.json` records the canonical repository, signed annotated tag,
 peeled commit, backend module/version/import and unchanged native identity for
-Java Card v0.3.0, Kotlin v0.3.0 and Swift v0.2.2. `releases/*.json` transcribe the
+Java Card v0.3.1, Kotlin v0.3.0 and Swift v0.2.2. `releases/*.json` transcribe the
 reviewed release receipts supplied to this integration. `allowed_signers` contains
 only the two public signing keys used by those receipts. Bootstrap verifies the
 actual tag object, peeled commit, checkout HEAD and signature, then refuses tracked
 source changes before every native build. Go's resolved graph must use those
-versions and pluginapi v0.1.0 without replacements.
+versions and pluginapi v0.1.1 without replacements.
 
 The immutable B6 fixture is `inputs/bsim-auth-2d23abd.toml`, copied from bsimId main
 commit `2d23abdafa1e0f68c6003ab56274b2ac38378ef9`, SHA-256
@@ -83,7 +83,9 @@ includeBuild('/absolute/generated/counter-server-javacard')
 
 Keep the runtime checkouts at native roots. The historical generated Kotlin
 manifest still names runtime `0.2.0` for byte parity; the root substitution selects
-the manifest's verified v0.3.0 checkout for every included project. Consumers pin
+the manifest's verified Kotlin v0.3.0 checkout for every included project. The
+Java Card substitution selects the signed v0.3.1 runtime, including when a
+generated ecosystem coordinate retains its historical version for byte parity. Consumers pin
 only the facade and use its runtime manifest; they do not independently guess
 compatible runtime versions or edit generated Gradle files.
 

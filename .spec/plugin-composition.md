@@ -65,6 +65,6 @@ The API freeze preserves the accepted composition/port checkpoint and
 compatibility wrappers. Independent API publication and later backend releases
 follow the parent-owned release sequence.
 
-Source builds resolve pluginapi v0.1.0 and the three exact published backend
+Source builds resolve pluginapi v0.1.1 and the three exact published backend
 modules without local replacements. Mutation fixtures may replace copied modules
 only inside disposable test trees. Production dependencies remain replace-free.

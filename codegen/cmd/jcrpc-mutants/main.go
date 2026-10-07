@@ -19,6 +19,11 @@ type mutant struct{ Name, File, Before, After, Module, Package, Test, Bound stri
 
 // Assertions are specific to the planted behavior, not setup/build failures.
 var assertions = map[string]string{
+	"cleanup-parser-written":       "cleanup metadata lost:",
+	"cleanup-validator-bogus":      "cleanup validation refusal missing: 0",
+	"cleanup-whole-transient":      "cleanup generation refusal missing:",
+	"cleanup-written-persistent":   "cleanup generation refusal missing:",
+	"manifest-api-old":             "obsolete API accepted: 0",
 	"checkout-index-hidden-source": "source integrity bypass: expected tracked-source refusal exit 1; got 0",
 	"manifest-input-digest":        "pinned input drift admitted or wrong refusal:",
 	"checkout-missing-signer":      "missing signer admitted or wrong refusal:",
@@ -78,6 +83,11 @@ var assertions = map[string]string{
 }
 
 var mutants = []mutant{
+	{"cleanup-parser-written", "codegen/parser.go", "raw.Applet.StreamWorkspaceCleanup,", "strings.Replace(raw.Applet.StreamWorkspaceCleanup, \"written-bytes-only\", \"\", 1),", "codegen", ".", "TestParseStreamWorkspaceCleanup/written-bytes-only", "drops exactly written-bytes-only during normalization; all other selector bytes remain"},
+	{"cleanup-validator-bogus", "codegen/validator.go", "case \"\":\n\t\t// Unspecified cleanup", "case \"\", \"bogus\":\n\t\t// Unspecified cleanup", "codegen", "./cmd/jcrpc-gen", "TestRunStreamWorkspaceCleanupValidation/persistent/bogus", "admits exactly unknown selector bogus; other invalid modes remain refused"},
+	{"cleanup-whole-transient", "codegen/validator.go", "if s.Applet.StreamWorkspace != \"persistent\" {", "if s.Applet.StreamWorkspace != \"persistent\" && !(s.Applet.StreamWorkspaceCleanup == pluginapi.StreamWorkspaceCleanupWholeReplyArea && s.Applet.StreamWorkspace == \"transient\") {", "codegen", "./cmd/jcrpc-gen", "TestRunStreamWorkspaceCleanupRefusals/whole-transient", "admits whole-reply-area only with explicit transient storage; other invalid combinations remain refused"},
+	{"cleanup-written-persistent", "codegen/validator.go", "case pluginapi.StreamWorkspaceCleanupWholeReplyArea:", "case pluginapi.StreamWorkspaceCleanupWholeReplyArea, pluginapi.StreamWorkspaceCleanupWrittenBytesOnly:", "codegen", "./cmd/jcrpc-gen", "TestRunStreamWorkspaceCleanupRefusals/written-persistent", "admits exactly dropped written-bytes-only with persistent storage; other unknown selectors and nonpersistent combinations remain refused"},
+	{"manifest-api-old", "codegen/internal/compat/manifest.go", "q.Version != \"v0.1.1\"", "(q.Version != \"v0.1.1\" && q.Version != \"v0.1.0\")", "codegen", "./cmd/jcrpc-compat", "TestManifestAPIRefusals/obsolete", "admits exactly obsolete API v0.1.0; replace refusal and target pins remain"},
 	{"checkout-index-hidden-source", "codegen/internal/compat/manifest.go", `if e = tracked("update-index", "--refresh"); e != nil {`, `if e = tracked("update-index", "--refresh"); e != nil && !(p.Target == "swift" && e.Error() == "git [update-index --refresh]: exit status 1: Sources/JavaCardRPCClient/APDUCommand.swift: needs update\n") {`, "codegen", "./cmd/jcrpc-compat", "TestPinnedCheckoutRejectsIndexHiddenTrackedSource/swift/assume-unchanged", "admits hidden tracked drift only in Swift APDUCommand.swift; all other paths, visible drift, tag, signature and untracked gates remain"},
 	{"manifest-input-digest", "codegen/internal/compat/manifest.go", "hex.EncodeToString(hash[:]) != m.BSimInput.SHA256", "hex.EncodeToString(hash[:]) != m.BSimInput.SHA256 && hex.EncodeToString(hash[:]) != \"6ec2d33f328f7cd3e5e7b4e26d10317b4f6686d0a4aec922d095d2f75a4e659e\"", "codegen", "./cmd/jcrpc-compat", "TestPinnedInputDigestRefusal", "admits exactly the changed B6 fixture digest; all other byte drift and identity guards refuse"},
 	{"checkout-missing-signer", "codegen/internal/compat/manifest.go", "return e\n}", "if p.Target == \"kotlin\" && e != nil && strings.Contains(e.Error(), \"No principal matched\") { return nil }; return e\n}", "codegen", "./cmd/jcrpc-compat", "TestPinnedCheckoutSignatureRefusals/kotlin/missing-signer", "admits an unapproved Kotlin signature only when cryptographic verification found no matching principal; other checks remain"},

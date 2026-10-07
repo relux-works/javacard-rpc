@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/relux-works/javacard-rpc/pluginapi"
 )
 
 var (
@@ -42,6 +44,16 @@ func Validate(s *Schema) []ValidationError {
 func validateApplet(s *Schema, add func(path, msg string)) {
 	if s.Applet.StreamWorkspace != "" && s.Applet.StreamWorkspace != "transient" && s.Applet.StreamWorkspace != "persistent" {
 		add("applet.stream_workspace", "must be transient or persistent")
+	}
+	switch s.Applet.StreamWorkspaceCleanup {
+	case "":
+		// Unspecified cleanup preserves released transient and persistent output.
+	case pluginapi.StreamWorkspaceCleanupWholeReplyArea:
+		if s.Applet.StreamWorkspace != "persistent" {
+			add("applet.stream_workspace_cleanup", "requires stream_workspace = persistent")
+		}
+	default:
+		add("applet.stream_workspace_cleanup", "must be whole-reply-area")
 	}
 	if strings.TrimSpace(s.Applet.Name) == "" {
 		add("applet.name", "must be non-empty")

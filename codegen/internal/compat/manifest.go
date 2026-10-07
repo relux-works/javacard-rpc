@@ -118,8 +118,8 @@ func Check(repo, manifest string) (Manifest, error) {
 		}
 	}
 	q := modules["github.com/relux-works/javacard-rpc/pluginapi"]
-	if q.Version != "v0.1.0" || q.Replace != nil {
-		return m, fmt.Errorf("pluginapi must resolve released v0.1.0 without replace")
+	if q.Version != "v0.1.1" || q.Replace != nil {
+		return m, fmt.Errorf("pluginapi must resolve released v0.1.1 without replace")
 	}
 	want := Input{"compatibility/inputs/bsim-auth-2d23abd.toml", "2d23abdafa1e0f68c6003ab56274b2ac38378ef9", "1be1ed52ac9a85a62d5c5e371a9e22d38f834282681528476ca071e7bfc2cb66"}
 	if m.BSimInput != want {

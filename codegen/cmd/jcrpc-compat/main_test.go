@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -122,6 +124,100 @@ func TestManifestBackendDisagreement(t *testing.T) {
 			_, e := compat.Check(root, filepath.Join(root, "compatibility/runtime-manifest.json"))
 			if e == nil || !strings.Contains(e.Error(), "backend module disagreement: kotlin") {
 				t.Fatalf("wrong module verdict: %v", e)
+			}
+		})
+	}
+}
+
+// The production compatibility CLI requires the published compatible API and
+// refuses the obsolete API or a local replacement; the exact public graph is
+// accepted before either bounded change is planted in the copied configuration.
+func TestManifestAPIRefusals(t *testing.T) {
+	repo, err := filepath.Abs("../../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []string{"obsolete", "lower-direct-require", "replace"} {
+		t.Run(kind, func(t *testing.T) {
+			root := t.TempDir()
+			for _, name := range []string{"codegen/go.mod", "codegen/go.sum", "compatibility/runtime-manifest.json", "compatibility/inputs/bsim-auth-2d23abd.toml", "compatibility/releases/javacard.json", "compatibility/releases/kotlin.json", "compatibility/releases/swift.json"} {
+				b, err := os.ReadFile(filepath.Join(repo, name))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := write(filepath.Join(root, name), string(b)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if code := run([]string{"--repo", root}); code != 0 {
+				t.Fatalf("public API control refused: %d", code)
+			}
+			mod := filepath.Join(root, "codegen/go.mod")
+			b, err := os.ReadFile(mod)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if kind == "obsolete" || kind == "lower-direct-require" {
+				b = bytes.Replace(b, []byte("github.com/relux-works/javacard-rpc/pluginapi v0.1.1"), []byte("github.com/relux-works/javacard-rpc/pluginapi v0.1.0"), 1)
+				if kind == "obsolete" {
+					// v0.3.1 transitively requires API v0.1.1. Only the real
+					// historical backend tuple can select the obsolete API;
+					// lowering a direct require alone is an accepted MVS control.
+					b = bytes.Replace(b, []byte("javacard-rpc-server-javacard v0.3.1"), []byte("javacard-rpc-server-javacard v0.3.0"), 1)
+					for _, name := range []string{"compatibility/runtime-manifest.json", "compatibility/releases/javacard.json"} {
+						raw, err := os.ReadFile(filepath.Join(root, name))
+						if err != nil {
+							t.Fatal(err)
+						}
+						for _, pair := range [][2]string{{"v0.3.1", "v0.3.0"}, {"javacard:0.3.1", "javacard:0.3.0"}, {"56b07eaf757d51b80b6e0adfff7b8f8326f0b6fb", "0a41fc2cd30f0b1e0871a0e2ff74583a8c04128c"}, {"ca371dc528c263aa7892cc42ffebe4192c081e9c", "e6d02397fc94a771c2e2ac9f27f43a2ea7c5a0de"}} {
+							raw = bytes.ReplaceAll(raw, []byte(pair[0]), []byte(pair[1]))
+						}
+						if err := os.WriteFile(filepath.Join(root, name), raw, 0644); err != nil {
+							t.Fatal(err)
+						}
+					}
+				}
+				// Signed v0.4.6's API checksums keep this a semantic refusal test,
+				// rather than an unrelated missing-sum resolver failure.
+				sumPath := filepath.Join(root, "codegen/go.sum")
+				sums, err := os.ReadFile(sumPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				sums = append(sums, []byte("github.com/relux-works/javacard-rpc/pluginapi v0.1.0 h1:SNT1MS/IcEzv84sJKwDGnP2j0QH8rexMpLNpOSAIlbI=\ngithub.com/relux-works/javacard-rpc/pluginapi v0.1.0/go.mod h1:vini/jA9xID/u2iYwtKViPacEvP9nLIapL3RdQV7RBc=\n")...)
+				if kind == "obsolete" {
+					sums = append(sums, []byte("github.com/relux-works/javacard-rpc-server-javacard v0.3.0 h1:PHDnUvoqNlUw8bqwqOodldlESy8jDu0BKCcn1lztlF4=\ngithub.com/relux-works/javacard-rpc-server-javacard v0.3.0/go.mod h1:bzncCYOWYLhEIUxldV1QDD1UzNuClA0fOchbBz3Ml+E=\n")...)
+				}
+				if err := os.WriteFile(sumPath, sums, 0644); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				b = append(b, []byte("\nreplace github.com/relux-works/javacard-rpc/pluginapi => "+filepath.Join(repo, "pluginapi")+"\n")...)
+			}
+			if err := os.WriteFile(mod, b, 0644); err != nil {
+				t.Fatal(err)
+			}
+			if kind == "lower-direct-require" {
+				// Resolve the edited fixture graph with Go's normal module update;
+				// readonly go list refuses the unnormalized go.mod instead.
+				cmd := exec.Command("go", "list", "-mod=mod", "-m", "-f", "{{.Path}} {{.Version}}", "all")
+				cmd.Dir = filepath.Join(root, "codegen")
+				cmd.Env = append(os.Environ(), "GOWORK=off", "GOPROXY=off", "GOSUMDB=off")
+				selected, err := cmd.CombinedOutput()
+				if err != nil || !strings.Contains(string(selected), "github.com/relux-works/javacard-rpc/pluginapi v0.1.1\n") {
+					t.Fatalf("MVS selected %q: %v", selected, err)
+				}
+				if code := run([]string{"--repo", root}); code != 0 {
+					t.Fatalf("higher transitive API refused: %d", code)
+				}
+				return
+			}
+			if code := run([]string{"--repo", root}); code != 1 {
+				t.Fatalf("%s API accepted: %d", kind, code)
+			}
+			_, err = compat.Check(root, filepath.Join(root, "compatibility/runtime-manifest.json"))
+			if err == nil || err.Error() != "pluginapi must resolve released v0.1.1 without replace" {
+				t.Fatalf("wrong API refusal: %v", err)
 			}
 		})
 	}
