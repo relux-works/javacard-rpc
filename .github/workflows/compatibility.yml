@@ -22,6 +22,7 @@ jobs:
         working-directory: codegen
         run: |
           go mod download
+          go mod download github.com/relux-works/javacard-rpc/pluginapi@v0.1.0 github.com/relux-works/javacard-rpc-server-javacard@v0.3.0
           go mod verify
           go build -o ../.temp/jcrpc-compat ./cmd/jcrpc-compat
           go build -o ../.temp/jcrpc-gen ./cmd/jcrpc-gen
@@ -73,6 +74,7 @@ jobs:
           xcodebuild -version
           cd codegen
           go mod download
+          go mod download github.com/relux-works/javacard-rpc/pluginapi@v0.1.0 github.com/relux-works/javacard-rpc-server-javacard@v0.3.0
           go build -o ../.temp/jcrpc-compat ./cmd/jcrpc-compat
           cd ..
           .temp/jcrpc-compat --repo . --mode bootstrap --root .temp/consumer
