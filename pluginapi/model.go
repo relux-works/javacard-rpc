@@ -16,7 +16,22 @@ type Applet struct {
 	CLA         byte
 	// StreamWorkspace selects bulk storage only; empty means transient.
 	StreamWorkspace string
+	// StreamWorkspaceCleanup selects an explicit cleanup mode only for persistent
+	// StreamWorkspace. Empty preserves released generation, including its
+	// persistent default. The facade and backend validate unknown modes and storage
+	// combinations; this model only carries metadata.
+	StreamWorkspaceCleanup string
 }
+
+const (
+	// StreamWorkspaceCleanupWholeReplyArea tracks request stores exactly and wipes
+	// the authorized reply area after handler execution, skipping untouched workspace.
+	StreamWorkspaceCleanupWholeReplyArea = "whole-reply-area"
+	// StreamWorkspaceCleanupWrittenBytesOnly uses a bounded tracked writer with
+	// bulk arrayCopy methods and no raw writable workspace escape, wiping its
+	// actual written range.
+	StreamWorkspaceCleanupWrittenBytesOnly = "written-bytes-only"
+)
 
 // Method describes a callable applet instruction.
 type Method struct {

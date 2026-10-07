@@ -1,9 +1,10 @@
 # javacard-rpc plugin API
 
 Module: `github.com/relux-works/javacard-rpc/pluginapi`, Go 1.24 or later.
-The first proposed release is **v0.1.0**, from Git tag **pluginapi/v0.1.0**
-in the javacard-rpc repository. The tag is prepared, not published. Before
-publication use a local `replace` against the reviewed candidate. This module
+The released baseline is **v0.1.0**, from Git tag **pluginapi/v0.1.0**
+in the javacard-rpc repository. **v0.1.1** is prepared here for parent publication
+under **pluginapi/v0.1.1**; it is not yet published. Before publication use a
+local `replace` against the reviewed candidate. This module
 contains only the shared model, options, ordered in-memory files and backend
 interface. It has no parser, semantic validator, target runtime, templates,
 registration registry or third-party module dependencies.
@@ -33,11 +34,26 @@ third-party CLI registration are not supported by v0.1.0.
 
 | Input | Semantics |
 | --- | --- |
-| `Schema` | Parsed, normalized, semantically validated model supplied by the facade; treat it as read-only. No parser or validator belongs in a backend. |
+| `Schema` | Parsed, normalized, semantically validated model supplied by the facade; treat it as read-only. No parser belongs in a backend; direct backend calls still need validation of the policies that backend implements. |
 | `Options.Namespace` | Java/Kotlin package or Swift module choice, including facade-resolved defaults. Source layout belongs to the backend. |
 | `Options.StreamMemory` | Java transient lifecycle: `clear_on_deselect` or `clear_on_reset`; an empty value uses the existing Java default. Other adapters ignore it. |
 | `Options.SimulatorDependency` | Facade-trimmed and validated `group:artifact:version` coordinate for Java's compile-only dependency, including the resolved CLI default `com.klinec:jcardsim:3.0.5.9`. Direct callers must supply the resolved coordinate. Other adapters ignore it. |
 | `Schema.Applet.StreamWorkspace` | Bulk stream storage: empty/`transient`, or `persistent`. Lifecycle remains independent; persistent storage does not promise atomic interrupted wiping. |
+| `Schema.Applet.StreamWorkspaceCleanup` | Plain string cleanup selector. Empty preserves released generation, including the existing persistent default. Explicit modes apply only with `StreamWorkspace == "persistent"`. Unknown selectors and nonpersistent combinations are validation responsibilities of the facade and direct backend entry point. |
+
+The two explicit cleanup names are centralized in this module:
+
+| Constant | Value | Persistent cleanup contract |
+| --- | --- | --- |
+| `StreamWorkspaceCleanupWholeReplyArea` | `"whole-reply-area"` | Track request stores exactly; after handler execution wipe the authorized reply area. Skip untouched workspace. |
+| `StreamWorkspaceCleanupWrittenBytesOnly` | `"written-bytes-only"` | Supply a bounded tracked writer with bulk `Util.arrayCopy` methods and no raw writable workspace escape; wipe its actual written range. |
+
+This API carries metadata only. It does not implement either cleanup mode,
+validate selectors, or change generated behavior. Parser/facade and Java Card
+implementation follow downstream after the API release. Adding the field
+preserves zero values, keyed literals and the `Plugin` interface; positional
+`Applet` literals must add the new trailing field. Interrupted persistent wiping
+still has no atomic secure-erasure guarantee.
 
 `Generate` returns the whole target package: source files and root Gradle/SPM
 manifests, in write/verbose order. `File.Name` is a canonical slash-separated
@@ -73,7 +89,7 @@ There is no atomic multi-target or arbitrary I/O rollback guarantee.
 The separate module fixture in `codegen/testdata/external-plugin` requires only
 this API. `TestPluginAPIExternalConsumer` copies it outside the repository,
 uses `GOWORK=off`, disables network module resolution, replaces only this
-unpublished API and checks the effective module/import graphs before building
+candidate API and checks the effective module/import graphs before building
 and testing it. Run:
 
 ```sh
@@ -81,4 +97,20 @@ cd codegen
 go test . -run '^(TestPluginAPIExternalConsumer|TestTargetAdaptersReturnWholePackages)$' -count=1 -v
 ```
 
-See [release preparation](../.spec/plugin-api-release.md) for publication gates.
+## Tools and focused checks
+
+| Tool | Purpose and command | Outputs |
+| --- | --- | --- |
+| Go | Model tests plus an independent API-only consumer: `go -C pluginapi test ./... -count=1 -v` | Go temporary test directories/cache; capture task logs under `.temp/` |
+| Go | Compile and lint: `go -C pluginapi build ./...`; `go -C pluginapi vet ./...` | Go build cache |
+| gofmt | Format Go sources: `gofmt -w pluginapi/*.go pluginapi/testdata/*.go` | Updated source files |
+
+`TestCleanupAPIIndependentConsumer` copies the API-local legacy backend fixture and new
+cleanup checks into a separate module, uses `GOWORK=off`, `GOPROXY=off` and
+`GOSUMDB=off`, replaces only the candidate API, verifies the two-module consumer
+graph and dependency-free production API import graph, and builds/tests it.
+This proves local source compatibility, not public availability of v0.1.1.
+
+See [v0.1.1 release preparation](RELEASE-v0.1.1.md) for the parent publication
+handoff, and [original API release preparation](../.spec/plugin-api-release.md)
+for the historical v0.1.0 preparation record.
