@@ -248,6 +248,14 @@ for the same reason: a Java Card heap is never reclaimed, so
 unauthenticated reader can drive until the applet answers `6A84`. Read
 `getStatusWord()` in the `catch` block before dispatching anything else.
 
+Ordinary callers now use `dispatchTo` with validated request/output spans.
+Byte/packed callbacks write to caller storage and return a produced `short`;
+byte-sequence inputs become borrowed buffer/offset/length triples. Receive the
+complete supported request and capture headers before overlapping writes. Keep
+APDU/input/output references command-local and send only after successful return.
+See [the v0.5.0 migration](RELEASE-NOTES-0.5.0.md) for whole-only capacity,
+trusted-handler, no-rollback, optional-int and physical deployment bounds.
+
 **Host side**: use the generated client:
 
 ```swift
@@ -452,8 +460,11 @@ object headers, reference widths and digest/provider/JCRE allocations.
 
 
 The facade composes the released target backends at compile time: Java Card
-v0.3.1, Kotlin v0.3.0 and Swift v0.2.2, through pluginapi v0.1.1.
-See [0.4.7 release notes](RELEASE-NOTES-0.4.7.md) for the opt-in cleanup contract,
+v0.4.0, Kotlin v0.3.0 and Swift v0.2.2, through pluginapi v0.1.1.
+See [0.5.0 release notes](RELEASE-NOTES-0.5.0.md) for the ordinary writer migration,
+verified root source bootstrap, response-RAM removal requirements, actual
+dependency provenance and qualification bounds. The historical
+[0.4.7 release notes](RELEASE-NOTES-0.4.7.md) retain the opt-in cleanup contract,
 published prerequisite identities and historical selection bounds.
 TOML parsing, validation, target selection, filesystem writes and compatible Go
 entry points remain here; renderers and target build templates live in their
@@ -489,7 +500,7 @@ trees; no target checkout is edited.
 | Bash + `shasum` | Validate the Gradle-published counter bridge classpath and build checksums before Java launch | `examples/counter/run-bridge.sh [--port 9025]`; `JCRPC_SKIP_BUILD=1 examples/counter/run-bridge.sh` after builds | `bridge/build/launch/classpath.txt`, `checksums.sha256`; named refusal on stderr, exit 2 |
 | Gradle | Compile generated Java/Kotlin packages and run the mandatory Kotlin/JVM transport/lifecycle harness | `make test-kotlin-contract`; `gradle -p <generated-package> build` | Go-managed temporary harness or package-local `build/` |
 | `javac` / `java` | Compile and execute generated Java runtime and fragmented-APDU harnesses | Run through `go test ./...` | Go-managed temporary directories |
-| Ant + ant-javacard | Convert the generated Java stream applet to a verified CAP | `JCRPC_ANT_JAVACARD_JAR=... JCRPC_JCKIT_DIR=... make test-cap` | Go-managed temporary CAP |
+| Ant + ant-javacard | Convert generated stream and migrated Counter library/wrapper/business classes to verified CAPs | `JCRPC_ANT_JAVACARD_JAR=... JCRPC_JCKIT_DIR=... make test-cap` (JDK 11; explicit JVM lease in shared runs) | Go-managed temporary CAPs; `JCRPC_COUNTER_CAP_OUT=.temp/TASK-ID/caps` preserves Counter artifacts |
 | Make | Stable project entry points and release gate | `make generate`, `make test-codegen`, `make test-bridge`, `make test-applet`, `make test-cap`, `make release-check`, `make e2e` | Generated examples under `examples/counter/generated/`; build products remain local |
 
 Go tests use their own temporary directories. Local task runs and generated

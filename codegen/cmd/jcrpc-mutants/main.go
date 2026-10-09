@@ -19,21 +19,22 @@ type mutant struct{ Name, File, Before, After, Module, Package, Test, Bound stri
 
 // Assertions are specific to the planted behavior, not setup/build failures.
 var assertions = map[string]string{
-	"cleanup-parser-written":       "cleanup metadata lost:",
-	"cleanup-validator-bogus":      "cleanup validation refusal missing: 0",
-	"cleanup-whole-transient":      "cleanup generation refusal missing:",
-	"cleanup-written-persistent":   "cleanup generation refusal missing:",
-	"manifest-api-old":             "obsolete API accepted: 0",
-	"checkout-index-hidden-source": "source integrity bypass: expected tracked-source refusal exit 1; got 0",
-	"manifest-input-digest":        "pinned input drift admitted or wrong refusal:",
-	"checkout-missing-signer":      "missing signer admitted or wrong refusal:",
-	"toolchain-digest-one":         "drift artifact admitted or wrong refusal:",
-	"toolchain-http-404":           "http-404 artifact admitted or wrong refusal:",
-	"checkout-untracked-source":    "checkout drift admitted or wrong refusal:",
-	"manifest-backend-version":     "wrong module verdict: <nil>",
-	"manifest-missing-kotlin":      "invalid manifest admitted: missing-kotlin",
-	"manifest-wrong-commit":        "invalid manifest admitted: wrong-commit",
-	"offline-one-central":          "network dependency refusal missing:",
+	"manifest-writer-old-signed-tag": "mismatched signed writer receipt admitted: <nil>",
+	"cleanup-parser-written":         "cleanup metadata lost:",
+	"cleanup-validator-bogus":        "cleanup validation refusal missing: 0",
+	"cleanup-whole-transient":        "cleanup generation refusal missing:",
+	"cleanup-written-persistent":     "cleanup generation refusal missing:",
+	"manifest-api-old":               "obsolete API accepted: 0",
+	"checkout-index-hidden-source":   "source integrity bypass: expected tracked-source refusal exit 1; got 0",
+	"manifest-input-digest":          "pinned input drift admitted or wrong refusal:",
+	"checkout-missing-signer":        "missing signer admitted or wrong refusal:",
+	"toolchain-digest-one":           "drift artifact admitted or wrong refusal:",
+	"toolchain-http-404":             "http-404 artifact admitted or wrong refusal:",
+	"checkout-untracked-source":      "checkout drift admitted or wrong refusal:",
+	"manifest-backend-version":       "wrong module verdict: <nil>",
+	"manifest-missing-kotlin":        "invalid manifest admitted: missing-kotlin",
+	"manifest-wrong-commit":          "invalid manifest admitted: wrong-commit",
+	"offline-one-central":            "network dependency refusal missing:",
 
 	"api-template-dependency":   "API compiled graph contains forbidden dependency:",
 	"package-dot-one":           "invalid package exit 3:",
@@ -83,6 +84,7 @@ var assertions = map[string]string{
 }
 
 var mutants = []mutant{
+	{"manifest-writer-old-signed-tag", "codegen/internal/compat/manifest.go", "if !reflect.DeepEqual(p, receipt) {", "compared := p; if p.Target == \"javacard\" && p.TagObject == \"ca371dc528c263aa7892cc42ffebe4192c081e9c\" { compared.TagObject = receipt.TagObject }; if !reflect.DeepEqual(compared, receipt) {", "codegen", "./cmd/jcrpc-compat", "TestManifestReleasedWriterReceiptRefusals/old-signed-tag", "admits exactly the authentic v0.3.1 signed tag object paired with the v0.4.0 writer receipt"},
 	{"cleanup-parser-written", "codegen/parser.go", "raw.Applet.StreamWorkspaceCleanup,", "strings.Replace(raw.Applet.StreamWorkspaceCleanup, \"written-bytes-only\", \"\", 1),", "codegen", ".", "TestParseStreamWorkspaceCleanup/written-bytes-only", "drops exactly written-bytes-only during normalization; all other selector bytes remain"},
 	{"cleanup-validator-bogus", "codegen/validator.go", "case \"\":\n\t\t// Unspecified cleanup", "case \"\", \"bogus\":\n\t\t// Unspecified cleanup", "codegen", "./cmd/jcrpc-gen", "TestRunStreamWorkspaceCleanupValidation/persistent/bogus", "admits exactly unknown selector bogus; other invalid modes remain refused"},
 	{"cleanup-whole-transient", "codegen/validator.go", "if s.Applet.StreamWorkspace != \"persistent\" {", "if s.Applet.StreamWorkspace != \"persistent\" && !(s.Applet.StreamWorkspaceCleanup == pluginapi.StreamWorkspaceCleanupWholeReplyArea && s.Applet.StreamWorkspace == \"transient\") {", "codegen", "./cmd/jcrpc-gen", "TestRunStreamWorkspaceCleanupRefusals/whole-transient", "admits whole-reply-area only with explicit transient storage; other invalid combinations remain refused"},

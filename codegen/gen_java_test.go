@@ -262,7 +262,7 @@ func TestGenerateJavaSkeletonCounterTransportShape(t *testing.T) {
 		"import javacard.framework.JCSystem;",
 		"protected final CounterTransport transport;",
 		"protected CounterSkeleton(CounterTransport transport)",
-		"public final byte[] dispatch(byte ins, byte p1, byte p2, byte[] data)",
+		"public final short dispatchTo(byte ins, byte p1, byte p2,",
 	}
 	for _, needle := range skeletonRequired {
 		if !strings.Contains(skeletonSrc, needle) {
@@ -312,13 +312,13 @@ func TestGenerateJavaSkeletonSupportsASCIIFields(t *testing.T) {
 	}
 
 	src := string(result.SkeletonSource)
-	if !strings.Contains(src, "byte[] imsi = slice(requestData, 0, 15);") {
+	if !strings.Contains(src, "short imsiLength = (short) 15;") {
 		t.Fatalf("generated java skeleton missing fixed-length ascii request decoding:\n%s", src)
 	}
-	if !strings.Contains(src, "protected abstract void onSetImsi(byte[] imsi);") {
+	if !strings.Contains(src, "protected abstract void onSetImsi(byte[] imsi, short imsiOffset, short imsiLength);") {
 		t.Fatalf("generated java skeleton missing ascii request abstract method:\n%s", src)
 	}
-	if !strings.Contains(src, "protected abstract byte[] onGetImsi();") {
+	if !strings.Contains(src, "protected abstract short onGetImsi(byte[] output, short outputOffset, short outputCapacity);") {
 		t.Fatalf("generated java skeleton missing ascii response abstract method:\n%s", src)
 	}
 }
@@ -350,10 +350,10 @@ func TestGenerateJavaSkeletonSupportsStringFields(t *testing.T) {
 	}
 
 	src := string(result.SkeletonSource)
-	if !strings.Contains(src, "byte[] message = slice(requestData, 0, requestData.length - 0);") {
+	if !strings.Contains(src, "short messageLength = (short) (requestLength - 0);") {
 		t.Fatalf("generated java skeleton missing variable-length string request decoding:\n%s", src)
 	}
-	if !strings.Contains(src, "protected abstract byte[] onEchoMessage(byte[] message);") {
+	if !strings.Contains(src, "protected abstract short onEchoMessage(byte[] message, short messageOffset, short messageLength, byte[] output, short outputOffset, short outputCapacity);") {
 		t.Fatalf("generated java skeleton missing string abstract method:\n%s", src)
 	}
 }

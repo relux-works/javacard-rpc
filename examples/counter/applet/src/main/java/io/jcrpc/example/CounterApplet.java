@@ -2,6 +2,9 @@ package io.jcrpc.counter.example;
 
 import counter.CounterSkeleton;
 import counter.CounterTransport;
+import javacard.framework.ISO7816;
+import javacard.framework.ISOException;
+import javacard.framework.Util;
 
 /**
  * Counter applet — business logic.
@@ -42,12 +45,14 @@ public class CounterApplet extends CounterSkeleton {
         (byte) 0x01, (byte) 0x07,
         (byte) 0x03, (byte) 0x42, (byte) 0x00
     };
-    private static final byte[] MOCK_EC_POINT = buildMockEcPoint();
-    private static final byte[] MOCK_SPKI = buildMockSpki();
+    // Classic clinit cannot call builders; initialize owned mock wire at install.
+    private final byte[] mockSpki;
     // Built in the constructor: the generated pack* helpers are instance
     // methods so their guards can reuse the skeleton's one preconstructed
     // exception instead of allocating per call.
     private final byte[] mockAppletInfo;
+    // Owned scratch: consume borrowed challenge bytes before overlapping writes.
+    private final byte[] signatureScratch = new byte[16];
 
     private short counter;
     private short limit;
@@ -58,13 +63,15 @@ public class CounterApplet extends CounterSkeleton {
         super(new CounterTransport() {
             @Override
             public byte[] transmit(byte ins, byte p1, byte p2, byte[] data) {
-                throw new UnsupportedOperationException("no outgoing transport");
+                ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
+                return null;
             }
         });
         counter = 0;
         limit = DEFAULT_LIMIT;
         storedData = new byte[MAX_DATA_SIZE];
         storedDataLen = -1; // -1 = no data stored
+        mockSpki = buildMockSpki();
         mockAppletInfo = buildMockAppletInfo();
     }
 
@@ -105,83 +112,111 @@ public class CounterApplet extends CounterSkeleton {
     }
 
     @Override
-    protected byte[] onGetInfo() {
-        byte[] buf = new byte[7]; // u16 + u16 + u8 + bool + bool
-        int off = 0;
-        off = packU16(buf, off, counter);
-        off = packU16(buf, off, limit);
-        off = packU8(buf, off, VERSION);
-        off = packBool(buf, off, storedDataLen >= 0);
-        packBool(buf, off, counter == limit);
-        return buf;
+    protected short onGetInfo(byte[] output, short outputOffset, short outputCapacity) {
+        int off = outputOffset;
+        off = packU16(output, off, counter);
+        off = packU16(output, off, limit);
+        off = packU8(output, off, VERSION);
+        off = packBool(output, off, storedDataLen >= 0);
+        packBool(output, off, counter == limit);
+        return 7;
     }
 
     @Override
-    protected void onStore(byte[] data) {
-        if (data.length > MAX_DATA_SIZE) {
-            throw statusWordFailure(SW_DATA_TOO_LONG);
+    protected void onStore(byte[] data, short dataOffset, short dataLength) {
+        if (dataLength > MAX_DATA_SIZE) throw statusWordFailure(SW_DATA_TOO_LONG);
+        Util.arrayCopyNonAtomic(data, dataOffset, storedData, (short) 0, dataLength);
+        storedDataLen = dataLength;
+    }
+
+    @Override
+    protected short onLoad(byte[] output, short outputOffset, short outputCapacity) {
+        if (storedDataLen < 0) throw statusWordFailure(SW_NO_DATA);
+        return writeBytes(storedData, (short) 0, (short) storedDataLen,
+                output, outputOffset, outputCapacity);
+    }
+
+    @Override
+    protected short onGetSpki(byte[] output, short outputOffset, short outputCapacity) {
+        return writeBytes(mockSpki, (short) 0, (short) mockSpki.length,
+                output, outputOffset, outputCapacity);
+    }
+
+    @Override
+    protected short onGetImsi(byte[] output, short outputOffset, short outputCapacity) {
+        return writeBytes(MOCK_IMSI, (short) 0, (short) MOCK_IMSI.length,
+                output, outputOffset, outputCapacity);
+    }
+
+    @Override
+    protected short onGetAppletInfo(byte[] output, short outputOffset, short outputCapacity) {
+        return writeBytes(mockAppletInfo, (short) 0, (short) mockAppletInfo.length,
+                output, outputOffset, outputCapacity);
+    }
+
+    @Override
+    protected short onSignChallenge(byte[] challenge, short challengeOffset, short challengeLength,
+            byte[] output, short outputOffset, short outputCapacity) {
+        if (challengeLength == 0) throw statusWordFailure(SW_EMPTY_CHALLENGE);
+        short partLen = challengeLength > 8 ? (short) 8 : challengeLength;
+        short length = (short) (6 + 2 * partLen);
+        requireCapacity(outputCapacity, length);
+        for (short i = 0; i < partLen; i++) {
+            signatureScratch[i] = (byte) (challenge[(short) (challengeOffset + i)] ^ VERSION ^ (byte) counter);
+            signatureScratch[(short) (8 + i)] = (byte) (challenge[(short) (challengeOffset + challengeLength - 1 - i)] ^ (byte) limit ^ 0x5A);
         }
-        System.arraycopy(data, 0, storedData, 0, data.length);
-        storedDataLen = data.length;
+        signatureScratch[0] &= 0x7F;
+        signatureScratch[8] &= 0x7F;
+        int off = outputOffset;
+        off = packU8(output, off, (byte) 0x30);
+        off = packU8(output, off, (byte) (length - 2));
+        off = packU8(output, off, (byte) 0x02);
+        off = packU8(output, off, (byte) partLen);
+        off = packBytes(output, off, signatureScratch, 0, partLen);
+        off = packU8(output, off, (byte) 0x02);
+        off = packU8(output, off, (byte) partLen);
+        packBytes(output, off, signatureScratch, 8, partLen);
+        return length;
     }
 
     @Override
-    protected byte[] onLoad() {
-        if (storedDataLen < 0) {
-            throw statusWordFailure(SW_NO_DATA);
-        }
-        byte[] result = new byte[storedDataLen];
-        System.arraycopy(storedData, 0, result, 0, storedDataLen);
-        return result;
+    protected short onGetDisplayName(byte[] output, short outputOffset, short outputCapacity) {
+        return writeBytes(MOCK_DISPLAY_NAME, (short) 0, (short) MOCK_DISPLAY_NAME.length,
+                output, outputOffset, outputCapacity);
     }
 
     @Override
-    protected byte[] onGetSpki() {
-        return copyBytes(MOCK_SPKI);
+    protected short onEchoMessage(byte[] message, short messageOffset, short messageLength,
+            byte[] output, short outputOffset, short outputCapacity) {
+        return writeBytes(message, messageOffset, messageLength, output, outputOffset, outputCapacity);
     }
 
-    @Override
-    protected byte[] onGetImsi() {
-        return copyBytes(MOCK_IMSI);
+    private void requireCapacity(short capacity, short length) {
+        if (length > capacity) throw statusWordFailure((short) 0x6700);
     }
 
-    @Override
-    protected byte[] onGetAppletInfo() {
-        return copyBytes(mockAppletInfo);
-    }
-
-    @Override
-    protected byte[] onSignChallenge(byte[] challenge) {
-        if (challenge.length == 0) {
-            throw statusWordFailure(SW_EMPTY_CHALLENGE);
-        }
-        return buildMockSignature(challenge);
-    }
-
-    @Override
-    protected byte[] onGetDisplayName() {
-        return copyBytes(MOCK_DISPLAY_NAME);
-    }
-
-    @Override
-    protected byte[] onEchoMessage(byte[] message) {
-        return copyBytes(message);
+    private short writeBytes(byte[] source, short offset, short length,
+            byte[] output, short outputOffset, short outputCapacity) {
+        requireCapacity(outputCapacity, length);
+        packBytes(output, outputOffset, source, offset, length);
+        return length;
     }
 
     private static byte[] buildMockEcPoint() {
         byte[] point = new byte[65];
         point[0] = 0x04;
         for (int i = 0; i < 32; i++) {
-            point[1 + i] = (byte) (0x11 + i);
-            point[33 + i] = (byte) (0x41 + i);
+            point[(short) (1 + i)] = (byte) (0x11 + i);
+            point[(short) (33 + i)] = (byte) (0x41 + i);
         }
         return point;
     }
 
     private static byte[] buildMockSpki() {
-        byte[] out = new byte[MOCK_SPKI_PREFIX.length + MOCK_EC_POINT.length];
-        System.arraycopy(MOCK_SPKI_PREFIX, 0, out, 0, MOCK_SPKI_PREFIX.length);
-        System.arraycopy(MOCK_EC_POINT, 0, out, MOCK_SPKI_PREFIX.length, MOCK_EC_POINT.length);
+        byte[] point = buildMockEcPoint();
+        byte[] out = new byte[(short) (MOCK_SPKI_PREFIX.length + point.length)];
+        Util.arrayCopyNonAtomic(MOCK_SPKI_PREFIX, (short) 0, out, (short) 0, (short) MOCK_SPKI_PREFIX.length);
+        Util.arrayCopyNonAtomic(point, (short) 0, out, (short) MOCK_SPKI_PREFIX.length, (short) point.length);
         return out;
     }
 
@@ -195,36 +230,6 @@ public class CounterApplet extends CounterSkeleton {
         off = packU8(out, off, MOCK_VERSION_PATCH);
         off = packU8(out, off, MOCK_KEY_ALGORITHM);
         packU16(out, off, MOCK_CAPABILITIES);
-        return out;
-    }
-
-    private byte[] buildMockSignature(byte[] challenge) {
-        int partLen = Math.min(challenge.length, 8);
-        byte[] out = new byte[2 + 2 + partLen + 2 + partLen];
-        out[0] = 0x30;
-        out[1] = (byte) (out.length - 2);
-        out[2] = 0x02;
-        out[3] = (byte) partLen;
-
-        for (int i = 0; i < partLen; i++) {
-            out[4 + i] = (byte) (challenge[i] ^ VERSION ^ (byte) counter);
-        }
-        out[4] = (byte) (out[4] & 0x7F);
-
-        int secondOff = 4 + partLen;
-        out[secondOff] = 0x02;
-        out[secondOff + 1] = (byte) partLen;
-        for (int i = 0; i < partLen; i++) {
-            int srcIndex = challenge.length - 1 - i;
-            out[secondOff + 2 + i] = (byte) (challenge[srcIndex] ^ (byte) limit ^ 0x5A);
-        }
-        out[secondOff + 2] = (byte) (out[secondOff + 2] & 0x7F);
-        return out;
-    }
-
-    private static byte[] copyBytes(byte[] source) {
-        byte[] out = new byte[source.length];
-        System.arraycopy(source, 0, out, 0, source.length);
         return out;
     }
 

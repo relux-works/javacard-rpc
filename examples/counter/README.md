@@ -21,6 +21,36 @@ It also ships two host-side executables against the same bridge and applet:
 
 The generated directory is intentionally gitignored. Recreate it with `make generate`.
 
+The Java Card v0.4.0 backend uses ordinary `dispatchTo` and caller-owned output
+spans. `CounterJCApplet.process` captures headers, receives every supported short
+input fragment into the APDU buffer, and sends only the successful produced span.
+Byte/packed callbacks write directly; byte inputs are borrowed span triples.
+The mock signature consumes needed input into install-time owned scratch before
+overlap. No command-time request/reply arrays or retained APDU binding are used.
+See [migration and capacity bounds](../../RELEASE-NOTES-0.5.0.md).
+
+Classic qualification converts the generated `counter` library and the real
+`io.jcrpc.counter.example` wrapper/business package separately, preserving both
+package identities and importing the library's JAR/EXP. With the pinned kit and
+Ant task, JDK 11, and an explicit JVM lease:
+
+```sh
+go -C codegen test . -run '^TestCounterWriterClassicCAP$' -count=1 -v
+```
+
+Set `JCRPC_ANT_JAVACARD_JAR` and `JCRPC_JCKIT_DIR` to the prepared toolchain;
+optional `JCRPC_COUNTER_CAP_OUT=.temp/TASK-ID/caps` preserves CAP artifacts.
+The test compiles against the exact SDK API (erasing only the source-only
+`@Override` annotation in temporary API-check copies), plants a host-only Math
+call and requires a specific missing-symbol refusal. Ant converts the original
+sources and verifies both CAPs before and after exact plant restoration.
+Oracle 3.0.5u4 crashes internally on unresolved Math calls; that crash is not
+counted as a successful control. A separate static-builder plant requires the
+converter's specific unsupported `invokestatic in clinit` refusal, then restores
+the exact source and reconverts/verifies successfully. Mock SPKI construction occurs at installation,
+because Classic static initializers cannot invoke builders. Simulator and
+physical qualifications remain distinct.
+
 ## From TOML to Generated Artifacts
 
 Run:

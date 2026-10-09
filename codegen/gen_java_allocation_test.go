@@ -25,8 +25,8 @@ func TestGeneratedJavaSkeletonHasNoAllocatingThrowOnDispatchPaths(t *testing.T) 
 		pkg     string
 		methods []string
 	}{
-		{"counter.toml", "io.jcrpc.counter.server", []string{"dispatch"}},
-		{"stream.toml", "io.jcrpc.streamdemo.server", []string{"dispatch", "dispatchStreamTo", "execute"}},
+		{"counter.toml", "io.jcrpc.counter.server", []string{"dispatchTo"}},
+		{"stream.toml", "io.jcrpc.streamdemo.server", []string{"dispatchTo", "dispatchStreamTo", "execute"}},
 	} {
 		s, err := ParseFile(filepath.Join("testdata", tc.schema))
 		if err != nil {
@@ -59,7 +59,7 @@ func TestGeneratedJavaSkeletonHasNoAllocatingThrowOnDispatchPaths(t *testing.T) 
 }
 
 // Behavioral half of S-01, driven through the production entry point
-// `dispatch(ins, p1, p2, data)` of the generated skeleton: N unknown-INS frames
+// `dispatchTo(...)` of the generated skeleton: N unknown-INS frames
 // yield N throws of the SAME exception object (zero new objects), the status
 // word stays 6D00, a valid request still succeeds afterwards, and the helper
 // error paths (wrong request length, wrong fixed response length) reuse that

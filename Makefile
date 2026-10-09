@@ -10,7 +10,7 @@
 #   run-bridge      Start the bridge with counter applet loaded
 #   run-example     Build and run the Swift E2E CLI
 #   run-kotlin-example Build and run the Kotlin/JVM E2E CLI
-#   test-cap        Convert a generated stream applet to a verified CAP
+#   test-cap        Convert generated stream and migrated Counter applets to verified CAPs
 #   release-check   Run the full test suite and required Kotlin/CAP gates
 #   e2e             Full one-shot pipeline: generate → build → bridge → run Swift + Kotlin E2E
 #   clean           Remove build artifacts
@@ -85,7 +85,7 @@ test-cap:
 	@test -n "$(JCRPC_ANT_JAVACARD_JAR)" || { echo "JCRPC_ANT_JAVACARD_JAR is required" >&2; exit 2; }
 	@test -n "$(JCRPC_JCKIT_DIR)" || { echo "JCRPC_JCKIT_DIR is required" >&2; exit 2; }
 	@command -v ant >/dev/null 2>&1 || { echo "ant is required" >&2; exit 2; }
-	cd $(CODEGEN_DIR) && go test . -run TestGeneratedJavaStreamPackageConvertsToCAP -count=1 -v
+	cd $(CODEGEN_DIR) && go test . -run '^(TestGeneratedJavaStreamPackageConvertsToCAP|TestCounterWriterClassicCAP)$$' -count=1 -v
 
 release-check: test test-kotlin-contract test-cap
 

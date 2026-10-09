@@ -101,7 +101,7 @@ func TestRunWholeCleanupMeasuredAuthIdentity(t *testing.T) {
 	}
 	expected := map[string]string{
 		"BSimAuthBoundedStreamRuntime.java": "5063f440b42c08619274cd16206541c55c98004acd3e3c8b727c26e9af9fb90f",
-		"BSimAuthSkeleton.java":             "95950ee333dab0ba36d53066e77aa488ef0e15170184f0adbcbc3a5fbf15a724",
+		"BSimAuthSkeleton.java":             "42ad5fa6ca43e93eb39e9d28e60b302ffd6bd51080a0e2f773c02e25f0d56cd7",
 		"BSimAuthStreamAPDUAdapter.java":    "ffeabcbc5fd61f86ce2fbe66912f0d8d228a1fbde4ac10737934e5c9ce49c8f8",
 		"BSimAuthStreamEndpoint.java":       "52af535eb9bf709701333862ea07d3e58f61f21ddbeac02da83465d525c05c09",
 		"BSimAuthTransport.java":            "75ff6fd4b035769347be3c6debe4e458e0141a0544f2f779a727939c626fb279",

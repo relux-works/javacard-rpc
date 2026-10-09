@@ -71,15 +71,15 @@ public final class FixedResponseHarness {
     }
 
     private static void assertAccepted(int length) {
-        byte[] response = new Logic(length).dispatch((byte) 0x01, (byte) 0, (byte) 0, null);
-        if (response.length != length) {
-            throw new AssertionError("unexpected response length " + response.length);
+        short produced = new Logic(length).dispatchTo((byte) 0x01, (byte) 0, (byte) 0, null, (short)0, (short)0, new byte[32], (short)3, (short)29);
+        if (produced != length) {
+            throw new AssertionError("unexpected response length " + produced);
         }
     }
 
     private static void assertRejected(int length) {
         try {
-            new Logic(length).dispatch((byte) 0x01, (byte) 0, (byte) 0, null);
+            new Logic(length).dispatchTo((byte) 0x01, (byte) 0, (byte) 0, null, (short)0, (short)0, new byte[32], (short)3, (short)29);
             throw new AssertionError("accepted " + length + "-byte fixed response");
         } catch (FixedDemoSkeleton.StatusWordException expected) {
             if (expected.getStatusWord() != (short) 0x6700) {
@@ -89,7 +89,7 @@ public final class FixedResponseHarness {
     }
 
     private static final class Logic extends FixedDemoSkeleton {
-        private final byte[] response;
+        private final short produced;
 
         Logic(int length) {
             super(new FixedDemoTransport() {
@@ -97,11 +97,11 @@ public final class FixedResponseHarness {
                     return new byte[0];
                 }
             });
-            response = new byte[length];
+            produced = (short)length;
         }
 
-        protected byte[] onGetInfo() {
-            return response;
+        protected short onGetInfo(byte[] output, short outputOffset, short outputCapacity) {
+            return produced;
         }
     }
 }

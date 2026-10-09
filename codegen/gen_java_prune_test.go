@@ -55,14 +55,20 @@ func TestGeneratedJavaSkeletonPruningIsVisibleBetweenSchemas(t *testing.T) {
 	counter := generatedSkeletonFor(t, "counter.toml")
 	stream := generatedSkeletonFor(t, "stream.toml")
 
-	// counter.toml reads a u32 request field, a bool in p1 and a trailing bytes
-	// field; stream.toml reads none of them, so those helpers must be gone there.
-	for _, name := range []string{"readU32", "readBool", "readU8", "slice"} {
+	// counter.toml reads a u32 request field and a bool in p1; stream.toml
+	// reads neither, so those helpers must be gone there. Byte inputs are
+	// borrowed spans under the writer API and must never regain a slice helper.
+	for _, name := range []string{"readU32", "readBool", "readU8"} {
 		if len(javaHelperBlocks(counter, name)) == 0 {
 			t.Errorf("counter.toml calls %q, so it must be declared", name)
 		}
 		if len(javaHelperBlocks(stream, name)) != 0 {
 			t.Errorf("stream.toml never calls %q, so it must not be declared", name)
+		}
+	}
+	for _, skeleton := range []string{counter, stream} {
+		if len(javaHelperBlocks(skeleton, "slice")) != 0 {
+			t.Error("borrowed byte inputs must not allocate request slices")
 		}
 	}
 }

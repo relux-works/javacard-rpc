@@ -7,7 +7,7 @@ import javacard.framework.JCSystem;
 /**
  * JVM regression witness for security audit S-01 (javacard-rpc, plan row T-20).
  *
- * Drives the generated production entry point CounterSkeleton.dispatch(...) and
+ * Drives the generated production entry point CounterSkeleton.dispatchTo(...) and
  * proves, by object identity, that the generated short-dispatch default branch
  * and the generated helper error paths never allocate an exception per call:
  * every failure raised by generated code is the one instance the skeleton
@@ -51,8 +51,9 @@ public final class DispatchAllocationHarness {
         }
 
         // 2. A valid request still succeeds afterwards (the applet is not wedged).
-        byte[] response = logic.dispatch(INS_INCREMENT, (byte) 5, (byte) 0, null);
-        require(response.length == 2 && response[0] == 0 && response[1] == 5,
+        byte[] response = new byte[133];
+        short produced = logic.dispatchTo(INS_INCREMENT, (byte) 5, (byte) 0, null, (short)0, (short)0, response, (short)0, (short)133);
+        require(produced == 2 && response[0] == 0 && response[1] == 5,
                 "increment after the unknown-INS loop must return 0x0005");
         require(logic.increments == 1, "handler must run exactly once");
 
@@ -78,8 +79,8 @@ public final class DispatchAllocationHarness {
 
         // 4. Still healthy after the helper failures.
         logic.infoLength = 5;
-        require(logic.dispatch(INS_GET_INFO, (byte) 0, (byte) 0, null).length == 5, "getInfo must recover");
-        require(logic.dispatch(INS_GET, (byte) 0, (byte) 0, null).length == 2, "get must recover");
+        require(logic.dispatchTo(INS_GET_INFO, (byte)0, (byte)0, null, (short)0, (short)0, new byte[133], (short)0, (short)133) == 5, "getInfo must recover");
+        require(logic.dispatchTo(INS_GET, (byte)0, (byte)0, null, (short)0, (short)0, new byte[133], (short)0, (short)133) == 2, "get must recover");
 
         // 5. Positive control: a developer-thrown business exception is a different object.
         logic.failIncrement = true;
@@ -187,7 +188,7 @@ public final class DispatchAllocationHarness {
 
     private static CounterSkeleton.StatusWordException expectFailure(Logic logic, byte ins, byte p1, byte[] data) {
         try {
-            logic.dispatch(ins, p1, (byte) 0, data);
+            logic.dispatchTo(ins, p1, (byte)0, data, (short)0, (short)(data == null ? 0 : data.length), new byte[133], (short)0, (short)133);
         } catch (CounterSkeleton.StatusWordException failure) {
             return failure;
         }
@@ -240,15 +241,15 @@ public final class DispatchAllocationHarness {
         protected void onSetLimit(short limit) {
         }
 
-        protected byte[] onGetInfo() {
-            return new byte[infoLength];
+        protected short onGetInfo(byte[] output, short outputOffset, short outputCapacity) {
+            return (short)infoLength;
         }
 
-        protected void onStore(byte[] data) {
+        protected void onStore(byte[] data, short dataOffset, short dataLength) {
         }
 
-        protected byte[] onLoad() {
-            return new byte[0];
+        protected short onLoad(byte[] output, short outputOffset, short outputCapacity) {
+            return (short)0;
         }
 
         protected void onSetCount(int newValue) {
@@ -258,8 +259,8 @@ public final class DispatchAllocationHarness {
         protected void onSetEnabled(boolean enabled) {
         }
 
-        protected byte[] onGetHash() {
-            return new byte[hashLength];
+        protected short onGetHash(byte[] output, short outputOffset, short outputCapacity) {
+            return (short)hashLength;
         }
     }
 }

@@ -1,11 +1,11 @@
 {
  "backend_import": "github.com/relux-works/javacard-rpc-server-javacard/codegen",
- "backend_version": "v0.3.1",
- "commit": "56b07eaf757d51b80b6e0adfff7b8f8326f0b6fb",
+ "backend_version": "v0.4.0",
+ "commit": "625e714c3d4ce9b00fa298b7b4d57208d1417bfb",
  "go_module": "github.com/relux-works/javacard-rpc-server-javacard",
  "repository": "https://github.com/relux-works/javacard-rpc-server-javacard",
- "runtime": "io.jcrpc:javacard-rpc-server-javacard:0.3.1",
- "tag": "v0.3.1",
- "tag_object": "ca371dc528c263aa7892cc42ffebe4192c081e9c",
+ "runtime": "io.jcrpc:javacard-rpc-server-javacard:0.4.0",
+ "tag": "v0.4.0",
+ "tag_object": "2d8786271c3cb3419ee524c8af7d1c8e5fac2e13",
  "target": "javacard"
 }

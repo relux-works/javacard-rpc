@@ -191,8 +191,11 @@ val client = CounterClient(transport = TCPTransport())
 
 ```java
 // CounterApplet extends generated CounterSkeleton
-// AppletBase (from javacard-rpc-server-javacard) handles APDU dispatch
-// Adapter bridges AppletBase → CounterTransport interface
+// CounterJCApplet receives the complete supported short request into the APDU buffer.
+// Capture INS/P1/P2 before overlap; call CounterSkeleton.dispatchTo with validated
+// input/output spans and send exactly the produced bytes after successful return.
+// Packed/bytes callbacks write output and return short; byte inputs are borrowed
+// buffer/offset/length triples. Keep APDU/buffer references command-local.
 ```
 
 ## Runtime Packages

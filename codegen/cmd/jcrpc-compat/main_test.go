@@ -160,16 +160,16 @@ func TestManifestAPIRefusals(t *testing.T) {
 			if kind == "obsolete" || kind == "lower-direct-require" {
 				b = bytes.Replace(b, []byte("github.com/relux-works/javacard-rpc/pluginapi v0.1.1"), []byte("github.com/relux-works/javacard-rpc/pluginapi v0.1.0"), 1)
 				if kind == "obsolete" {
-					// v0.3.1 transitively requires API v0.1.1. Only the real
+					// v0.4.0 transitively requires API v0.1.1. Only the real
 					// historical backend tuple can select the obsolete API;
 					// lowering a direct require alone is an accepted MVS control.
-					b = bytes.Replace(b, []byte("javacard-rpc-server-javacard v0.3.1"), []byte("javacard-rpc-server-javacard v0.3.0"), 1)
+					b = bytes.Replace(b, []byte("javacard-rpc-server-javacard v0.4.0"), []byte("javacard-rpc-server-javacard v0.3.0"), 1)
 					for _, name := range []string{"compatibility/runtime-manifest.json", "compatibility/releases/javacard.json"} {
 						raw, err := os.ReadFile(filepath.Join(root, name))
 						if err != nil {
 							t.Fatal(err)
 						}
-						for _, pair := range [][2]string{{"v0.3.1", "v0.3.0"}, {"javacard:0.3.1", "javacard:0.3.0"}, {"56b07eaf757d51b80b6e0adfff7b8f8326f0b6fb", "0a41fc2cd30f0b1e0871a0e2ff74583a8c04128c"}, {"ca371dc528c263aa7892cc42ffebe4192c081e9c", "e6d02397fc94a771c2e2ac9f27f43a2ea7c5a0de"}} {
+						for _, pair := range [][2]string{{"v0.4.0", "v0.3.0"}, {"javacard:0.4.0", "javacard:0.3.0"}, {"625e714c3d4ce9b00fa298b7b4d57208d1417bfb", "0a41fc2cd30f0b1e0871a0e2ff74583a8c04128c"}, {"2d8786271c3cb3419ee524c8af7d1c8e5fac2e13", "e6d02397fc94a771c2e2ac9f27f43a2ea7c5a0de"}} {
 							raw = bytes.ReplaceAll(raw, []byte(pair[0]), []byte(pair[1]))
 						}
 						if err := os.WriteFile(filepath.Join(root, name), raw, 0644); err != nil {

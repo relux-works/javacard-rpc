@@ -5,16 +5,9 @@ import javacard.framework.APDU;
 import javacard.framework.Applet;
 import javacard.framework.ISO7816;
 import javacard.framework.ISOException;
-import javacard.framework.Util;
 
-/**
- * Java Card wrapper for CounterApplet.
- * Bridges javacard.framework.APDU → CounterSkeleton.dispatch().
- * This is the DI adapter: jCardSim sees a real JC Applet,
- * business logic lives in CounterApplet (extends CounterSkeleton).
- */
+/** Command-local DI adapter from APDU to the generated ordinary writer. */
 public class CounterJCApplet extends Applet {
-
     private final CounterApplet logic;
 
     private CounterJCApplet() {
@@ -28,32 +21,43 @@ public class CounterJCApplet extends Applet {
 
     @Override
     public void process(APDU apdu) {
-        byte[] buf = apdu.getBuffer();
-        if (selectingApplet()) {
-            return;
-        }
-
-        if (buf[ISO7816.OFFSET_CLA] != CounterSkeleton.CLA_COUNTER) {
+        if (selectingApplet()) return;
+        byte[] buffer = apdu.getBuffer();
+        if (buffer[ISO7816.OFFSET_CLA] != CounterSkeleton.CLA_COUNTER) {
             ISOException.throwIt(ISO7816.SW_CLA_NOT_SUPPORTED);
         }
-
-        byte ins = buf[ISO7816.OFFSET_INS];
-        byte p1 = buf[ISO7816.OFFSET_P1];
-        byte p2 = buf[ISO7816.OFFSET_P2];
-
-        // Read incoming data
-        short lc = apdu.setIncomingAndReceive();
-        byte[] data = null;
-        if (lc > 0) {
-            data = new byte[lc];
-            Util.arrayCopy(buf, ISO7816.OFFSET_CDATA, data, (short) 0, lc);
+        // Capture the header before receiving/overlapping response writes.
+        byte ins = buffer[ISO7816.OFFSET_INS];
+        byte p1 = buffer[ISO7816.OFFSET_P1];
+        byte p2 = buffer[ISO7816.OFFSET_P2];
+        short received = apdu.setIncomingAndReceive();
+        short requestLength = apdu.getIncomingLength();
+        short requestOffset = apdu.getOffsetCdata();
+        // This caller supports short APDUs only, and stages the entire request
+        // in the actual APDU buffer. Extended/oversize requests never dispatch.
+        if (requestOffset != ISO7816.OFFSET_CDATA || requestLength < 0
+                || requestLength > 255 || buffer.length > 32767
+                || requestOffset > buffer.length
+                || requestLength > buffer.length - requestOffset
+                || received < 0 || received > requestLength) {
+            ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
         }
-
+        while (received < requestLength) {
+            short fragment = apdu.receiveBytes((short) (requestOffset + received));
+            if (fragment <= 0 || fragment > requestLength - received) {
+                ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+            }
+            received += fragment;
+        }
+        short outputOffset = 0;
+        short outputCapacity = buffer.length > 255 ? (short) 255 : (short) buffer.length;
         try {
-            byte[] response = logic.dispatch(ins, p1, p2, data);
-            if (response != null && response.length > 0) {
-                Util.arrayCopy(response, (short) 0, buf, (short) 0, (short) response.length);
-                apdu.setOutgoingAndSend((short) 0, (short) response.length);
+            short produced = logic.dispatchTo(ins, p1, p2,
+                    buffer, requestOffset, requestLength,
+                    buffer, outputOffset, outputCapacity);
+            // Only a successful dispatch supplies a sendable span.
+            if (produced > 0) {
+                apdu.setOutgoingAndSend(outputOffset, produced);
             }
         } catch (CounterSkeleton.StatusWordException e) {
             ISOException.throwIt(e.getStatusWord());

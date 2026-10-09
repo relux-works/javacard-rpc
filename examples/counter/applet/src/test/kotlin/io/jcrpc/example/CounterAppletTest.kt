@@ -79,6 +79,31 @@ class CounterAppletTest {
 
     // --- SELECT ---
 
+    // Real simulator process -> dispatchTo -> APDU send rejects neighboring
+    // fixed lengths with no response data or limit/counter mutation.
+    @Test
+    fun `writer malformed fixed requests send nothing and preserve state`() {
+        assertEquals(0x9000, send(0x05, data = byteArrayOf(0, 3)).sw)
+        assertEquals(2, readU16(send(0x01, p1 = 2).data))
+        for (data in listOf(byteArrayOf(0), byteArrayOf(0, 9, 1))) {
+            val response = send(0x05, data = data)
+            assertEquals(0x6700, response.sw)
+            assertEquals(0, response.data.size)
+            val info = send(0x06)
+            assertEquals(2, readU16(info.data))
+            assertEquals(3, readU16(info.data, 2))
+        }
+        val unexpected = send(0x01, p1 = 1, data = byteArrayOf(0))
+        assertEquals(0x6700, unexpected.sw)
+        assertEquals(0, unexpected.data.size)
+        assertEquals(2, readU16(send(0x03).data))
+        assertEquals(3, readU16(send(0x01, p1 = 1).data))
+        val overflow = send(0x01, p1 = 1)
+        assertEquals(0x6986, overflow.sw)
+        assertEquals(0, overflow.data.size)
+        assertEquals(3, readU16(send(0x03).data))
+    }
+
     @Test
     fun `SELECT returns 9000`() {
         val select = CommandAPDU(0x00, 0xA4, 0x04, 0x00, AID_BYTES)

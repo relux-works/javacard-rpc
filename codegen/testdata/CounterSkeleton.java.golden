@@ -47,7 +47,7 @@ public abstract class CounterSkeleton {
     private static final short SW_INS_NOT_SUPPORTED = (short) 0x6D00;
     private final byte[] empty;
     // The one StatusWordException this instance ever constructs. Every
-    // generated error path (dispatch default, pack*/read*/slice guards,
+    // generated error path (dispatch default, pack*/read* guards,
     // fixed-length response checks) re-arms and rethrows it, so an
     // unauthenticated caller looping unknown or malformed frames cannot
     // grow the never-reclaimed Java Card heap (security audit S-01).
@@ -61,32 +61,47 @@ public abstract class CounterSkeleton {
         this.sharedFailure = new StatusWordException(SW_INS_NOT_SUPPORTED);
     }
 
-    public final byte[] dispatch(byte ins, byte p1, byte p2, byte[] data) {
-        byte[] requestData = safeBytes(data);
+    /**
+     * Write a whole ordinary reply into caller-owned storage; return its length.
+     * Null request storage is allowed only for the empty (0, 0) span.
+     * No APDU reference is retained. Typed inputs are decoded before any write.
+     * Byte-sequence inputs borrow request storage: consume overlapping input
+     * before writing output. Handlers must respect capacity and never retain
+     * request/output references. A rejected call yields no sendable length;
+     * output may already contain handler writes and is not rolled back.
+     */
+    public final short dispatchTo(byte ins, byte p1, byte p2,
+            byte[] requestBuffer, short requestOffset, short requestLength,
+            byte[] output, short outputOffset, short outputCapacity) {
+        if (requestBuffer == null && (requestOffset != 0 || requestLength != 0)) {
+            throw statusWordFailure(SW_WRONG_LENGTH);
+        }
+        byte[] requestData = safeBytes(requestBuffer);
+        checkWindow(requestData, requestOffset, requestLength);
+        checkWindow(output, outputOffset, outputCapacity);
         switch (ins) {
             case INS_INCREMENT:
-                return handleIncrement(p1, p2, requestData);
+                return handleIncrement(p1, p2, requestData, requestOffset, requestLength, output, outputOffset, outputCapacity);
             case INS_DECREMENT:
-                return handleDecrement(p1, p2, requestData);
+                return handleDecrement(p1, p2, requestData, requestOffset, requestLength, output, outputOffset, outputCapacity);
             case INS_GET:
-                return handleGet(p1, p2, requestData);
+                return handleGet(p1, p2, requestData, requestOffset, requestLength, output, outputOffset, outputCapacity);
             case INS_RESET:
-                onReset();
-                return empty;
+                return handleReset(p1, p2, requestData, requestOffset, requestLength, output, outputOffset, outputCapacity);
             case INS_SET_LIMIT:
-                return handleSetLimit(p1, p2, requestData);
+                return handleSetLimit(p1, p2, requestData, requestOffset, requestLength, output, outputOffset, outputCapacity);
             case INS_GET_INFO:
-                return handleGetInfo(p1, p2, requestData);
+                return handleGetInfo(p1, p2, requestData, requestOffset, requestLength, output, outputOffset, outputCapacity);
             case INS_STORE:
-                return handleStore(p1, p2, requestData);
+                return handleStore(p1, p2, requestData, requestOffset, requestLength, output, outputOffset, outputCapacity);
             case INS_LOAD:
-                return handleLoad(p1, p2, requestData);
+                return handleLoad(p1, p2, requestData, requestOffset, requestLength, output, outputOffset, outputCapacity);
             case INS_SET_COUNT:
-                return handleSetCount(p1, p2, requestData);
+                return handleSetCount(p1, p2, requestData, requestOffset, requestLength, output, outputOffset, outputCapacity);
             case INS_SET_ENABLED:
-                return handleSetEnabled(p1, p2, requestData);
+                return handleSetEnabled(p1, p2, requestData, requestOffset, requestLength, output, outputOffset, outputCapacity);
             case INS_GET_HASH:
-                return handleGetHash(p1, p2, requestData);
+                return handleGetHash(p1, p2, requestData, requestOffset, requestLength, output, outputOffset, outputCapacity);
             default:
                 throw statusWordFailure(SW_INS_NOT_SUPPORTED);
         }
@@ -98,88 +113,153 @@ public abstract class CounterSkeleton {
 
     // --- Dispatch wiring (reads request fields, calls abstract method, returns encoded response) ---
 
-    private byte[] handleIncrement(byte p1, byte p2, byte[] requestData) {
+    private short handleIncrement(byte p1, byte p2, byte[] requestData, short requestOffset, short requestLength, byte[] output, short outputOffset, short outputCapacity) {
         // request: amount(u8) in P1
+        if (requestLength != 0) {
+            throw statusWordFailure(SW_WRONG_LENGTH);
+        }
         byte amount = p1;
-        short value = onIncrement(amount);
-        byte[] out = new byte[2];
-        packU16(out, 0, value);
-        return out;
+        if (outputCapacity < 2) {
+            throw statusWordFailure(SW_WRONG_LENGTH);
+        }
+        short result = onIncrement(amount);
+        packU16(output, outputOffset, result);
+        return (short) 2;
     }
 
-    private byte[] handleDecrement(byte p1, byte p2, byte[] requestData) {
+    private short handleDecrement(byte p1, byte p2, byte[] requestData, short requestOffset, short requestLength, byte[] output, short outputOffset, short outputCapacity) {
         // request: amount(u8) in P1
+        if (requestLength != 0) {
+            throw statusWordFailure(SW_WRONG_LENGTH);
+        }
         byte amount = p1;
-        short value = onDecrement(amount);
-        byte[] out = new byte[2];
-        packU16(out, 0, value);
-        return out;
+        if (outputCapacity < 2) {
+            throw statusWordFailure(SW_WRONG_LENGTH);
+        }
+        short result = onDecrement(amount);
+        packU16(output, outputOffset, result);
+        return (short) 2;
     }
 
-    private byte[] handleGet(byte p1, byte p2, byte[] requestData) {
-        short value = onGet();
-        byte[] out = new byte[2];
-        packU16(out, 0, value);
-        return out;
+    private short handleGet(byte p1, byte p2, byte[] requestData, short requestOffset, short requestLength, byte[] output, short outputOffset, short outputCapacity) {
+        if (requestLength != 0) {
+            throw statusWordFailure(SW_WRONG_LENGTH);
+        }
+        if (outputCapacity < 2) {
+            throw statusWordFailure(SW_WRONG_LENGTH);
+        }
+        short result = onGet();
+        packU16(output, outputOffset, result);
+        return (short) 2;
     }
 
-    private byte[] handleSetLimit(byte p1, byte p2, byte[] requestData) {
+    private short handleReset(byte p1, byte p2, byte[] requestData, short requestOffset, short requestLength, byte[] output, short outputOffset, short outputCapacity) {
+        if (requestLength != 0) {
+            throw statusWordFailure(SW_WRONG_LENGTH);
+        }
+        if (outputCapacity < 0) {
+            throw statusWordFailure(SW_WRONG_LENGTH);
+        }
+        onReset();
+        return (short) 0;
+    }
+
+    private short handleSetLimit(byte p1, byte p2, byte[] requestData, short requestOffset, short requestLength, byte[] output, short outputOffset, short outputCapacity) {
         // request: limit(u16) in data
-        if (requestData.length < 2) {
+        if (requestLength != 2) {
             throw statusWordFailure(SW_WRONG_LENGTH);
         }
-        short limit = readU16(requestData, 0);
+        short limit = readU16(requestData, requestOffset + 0);
+        if (outputCapacity < 0) {
+            throw statusWordFailure(SW_WRONG_LENGTH);
+        }
         onSetLimit(limit);
-        return empty;
+        return (short) 0;
     }
 
-    private byte[] handleGetInfo(byte p1, byte p2, byte[] requestData) {
-        byte[] out = safeBytes(onGetInfo());
-        if (out.length != 5) {
+    private short handleGetInfo(byte p1, byte p2, byte[] requestData, short requestOffset, short requestLength, byte[] output, short outputOffset, short outputCapacity) {
+        if (requestLength != 0) {
             throw statusWordFailure(SW_WRONG_LENGTH);
         }
-        return out;
+        if (outputCapacity < 5) {
+            throw statusWordFailure(SW_WRONG_LENGTH);
+        }
+        short produced = onGetInfo(output, outputOffset, (short) 5);
+        if (produced < 0 || produced > outputCapacity) {
+            throw statusWordFailure(SW_WRONG_LENGTH);
+        }
+        if (produced != 5) {
+            throw statusWordFailure(SW_WRONG_LENGTH);
+        }
+        return produced;
     }
 
-    private byte[] handleStore(byte p1, byte p2, byte[] requestData) {
+    private short handleStore(byte p1, byte p2, byte[] requestData, short requestOffset, short requestLength, byte[] output, short outputOffset, short outputCapacity) {
         // request: data(bytes) in request data
-        byte[] data = slice(requestData, 0, requestData.length - 0);
-        onStore(data);
-        return empty;
+        if (requestLength < 0) {
+            throw statusWordFailure(SW_WRONG_LENGTH);
+        }
+        short dataOffset = (short) (requestOffset + 0);
+        short dataLength = (short) (requestLength - 0);
+        if (outputCapacity < 0) {
+            throw statusWordFailure(SW_WRONG_LENGTH);
+        }
+        onStore(requestData, dataOffset, dataLength);
+        return (short) 0;
     }
 
-    private byte[] handleLoad(byte p1, byte p2, byte[] requestData) {
-        byte[] src = safeBytes(onLoad());
-        byte[] out = new byte[(short) src.length];
-        packBytes(out, 0, src, 0, src.length);
-        return out;
+    private short handleLoad(byte p1, byte p2, byte[] requestData, short requestOffset, short requestLength, byte[] output, short outputOffset, short outputCapacity) {
+        if (requestLength != 0) {
+            throw statusWordFailure(SW_WRONG_LENGTH);
+        }
+        short produced = onLoad(output, outputOffset, outputCapacity);
+        if (produced < 0 || produced > outputCapacity) {
+            throw statusWordFailure(SW_WRONG_LENGTH);
+        }
+        return produced;
     }
 
-    private byte[] handleSetCount(byte p1, byte p2, byte[] requestData) {
+    private short handleSetCount(byte p1, byte p2, byte[] requestData, short requestOffset, short requestLength, byte[] output, short outputOffset, short outputCapacity) {
         // request: value(u32) in data
-        if (requestData.length < 4) {
+        if (requestLength != 4) {
             throw statusWordFailure(SW_WRONG_LENGTH);
         }
-        int value = readU32(requestData, 0);
+        int value = readU32(requestData, requestOffset + 0);
+        if (outputCapacity < 0) {
+            throw statusWordFailure(SW_WRONG_LENGTH);
+        }
         onSetCount(value);
-        return empty;
+        return (short) 0;
     }
 
-    private byte[] handleSetEnabled(byte p1, byte p2, byte[] requestData) {
+    private short handleSetEnabled(byte p1, byte p2, byte[] requestData, short requestOffset, short requestLength, byte[] output, short outputOffset, short outputCapacity) {
         // request: enabled(bool) in P1
-        boolean enabled = readBool(p1);
-        onSetEnabled(enabled);
-        return empty;
-    }
-
-    private byte[] handleGetHash(byte p1, byte p2, byte[] requestData) {
-        byte[] src = safeBytes(onGetHash());
-        if (src.length != 32) {
+        if (requestLength != 0) {
             throw statusWordFailure(SW_WRONG_LENGTH);
         }
-        byte[] out = new byte[32];
-        packBytes(out, 0, src, 0, 32);
-        return out;
+        boolean enabled = readBool(p1);
+        if (outputCapacity < 0) {
+            throw statusWordFailure(SW_WRONG_LENGTH);
+        }
+        onSetEnabled(enabled);
+        return (short) 0;
+    }
+
+    private short handleGetHash(byte p1, byte p2, byte[] requestData, short requestOffset, short requestLength, byte[] output, short outputOffset, short outputCapacity) {
+        if (requestLength != 0) {
+            throw statusWordFailure(SW_WRONG_LENGTH);
+        }
+        if (outputCapacity < 32) {
+            throw statusWordFailure(SW_WRONG_LENGTH);
+        }
+        short produced = onGetHash(output, outputOffset, (short) 32);
+        if (produced < 0 || produced > outputCapacity) {
+            throw statusWordFailure(SW_WRONG_LENGTH);
+        }
+        if (produced != 32) {
+            throw statusWordFailure(SW_WRONG_LENGTH);
+        }
+        return produced;
     }
 
     // --- Abstract methods — developer implements these ---
@@ -201,18 +281,18 @@ public abstract class CounterSkeleton {
 
     /**
      * getInfo() → {value: u16, limit: u16, version: u8}
-     * Return encoded response bytes in schema field order.
+     * Write encoded response bytes in schema field order; return produced length.
      */
-    protected abstract byte[] onGetInfo();
+    protected abstract short onGetInfo(byte[] output, short outputOffset, short outputCapacity);
 
     /** store(data: bytes) */
-    protected abstract void onStore(byte[] data);
+    protected abstract void onStore(byte[] data, short dataOffset, short dataLength);
 
     /**
      * load() → data: bytes
-     * Return response bytes.
+     * Write response bytes into the output span; return produced length.
      */
-    protected abstract byte[] onLoad();
+    protected abstract short onLoad(byte[] output, short outputOffset, short outputCapacity);
 
     /** setCount(value: u32) */
     protected abstract void onSetCount(int value);
@@ -222,9 +302,9 @@ public abstract class CounterSkeleton {
 
     /**
      * getHash() → hash: bytes_fixed
-     * Return response bytes.
+     * Write response bytes into the output span; return produced length.
      */
-    protected abstract byte[] onGetHash();
+    protected abstract short onGetHash(byte[] output, short outputOffset, short outputCapacity);
 
     // No-message, numeric-only exception: java.lang.String is not safely
     // convertible on real Java Card Classic runtimes (no StringBuilder,
@@ -269,19 +349,26 @@ public abstract class CounterSkeleton {
         return data == null ? empty : data;
     }
 
+    // Subtraction after offset validation avoids overflow in offset + length.
+    private void checkWindow(byte[] buffer, short offset, short length) {
+        if (buffer == null || offset < 0 || length < 0 ||
+                offset > buffer.length || length > buffer.length - offset) {
+            throw statusWordFailure(SW_WRONG_LENGTH);
+        }
+    }
+
     // Offsets/lengths below are declared int (this file is generated with
     // ints="true" support in the CAP build), but every actual array index is
     // explicitly narrowed to short at the point of use -- the JCVM only
     // accepts short/byte operands for array load/store, even when general
     // int arithmetic is otherwise allowed. This file imports only JCSystem for
-    // transient status storage, so array copies still go through System.arraycopy,
-    // not Util.arrayCopyNonAtomic.
+    // transient status storage; copies use the short-indexed loop below.
     // The helpers are instance methods (not static) only so their guards can
     // reach the preconstructed exception; a static initializer holding an
     // object is not portable to Java Card Classic.
 
     protected final int packU8(byte[] buf, int off, byte value) {
-        if (off < 0 || off >= buf.length) {
+        if (buf == null || off < 0 || off >= buf.length) {
             throw statusWordFailure(SW_WRONG_LENGTH);
         }
         buf[(short) off] = value;
@@ -293,7 +380,7 @@ public abstract class CounterSkeleton {
     }
 
     protected final int packU16(byte[] buf, int off, short value) {
-        if (off < 0 || off+1 >= buf.length) {
+        if (buf == null || off < 0 || off > buf.length || 2 > buf.length - off) {
             throw statusWordFailure(SW_WRONG_LENGTH);
         }
         buf[(short) off] = (byte) ((value >>> 8) & 0xFF);
@@ -302,7 +389,7 @@ public abstract class CounterSkeleton {
     }
 
     protected final int packU32(byte[] buf, int off, int value) {
-        if (off < 0 || off+3 >= buf.length) {
+        if (buf == null || off < 0 || off > buf.length || 4 > buf.length - off) {
             throw statusWordFailure(SW_WRONG_LENGTH);
         }
         buf[(short) off] = (byte) ((value >>> 24) & 0xFF);
@@ -313,7 +400,9 @@ public abstract class CounterSkeleton {
     }
 
     protected final int packBytes(byte[] dst, int dstOff, byte[] src, int srcOff, int srcLen) {
-        if (srcLen < 0 || dstOff < 0 || srcOff < 0 || dstOff+srcLen > dst.length || srcOff+srcLen > src.length) {
+        if (dst == null || src == null || srcLen < 0 || dstOff < 0 || srcOff < 0 ||
+                dstOff > dst.length || srcOff > src.length ||
+                srcLen > dst.length - dstOff || srcLen > src.length - srcOff) {
             throw statusWordFailure(SW_WRONG_LENGTH);
         }
         copyBytes(src, srcOff, dst, dstOff, srcLen);
@@ -328,6 +417,13 @@ public abstract class CounterSkeleton {
     // import, which this file deliberately never has (kept usable as plain
     // JVM code too). A short-indexed loop works identically on both.
     private static void copyBytes(byte[] src, int srcOff, byte[] dst, int dstOff, int len) {
+        // memmove semantics for callers echoing a borrowed overlapping span.
+        if (src == dst && dstOff > srcOff && dstOff - srcOff < len) {
+            for (int i = len - 1; i >= 0; i--) {
+                dst[(short) (dstOff + i)] = src[(short) (srcOff + i)];
+            }
+            return;
+        }
         for (int i = 0; i < len; i++) {
             dst[(short) (dstOff + i)] = src[(short) (srcOff + i)];
         }
@@ -371,15 +467,4 @@ public abstract class CounterSkeleton {
             | (data[(short) (off+3)] & 0xFF);
     }
 
-    private byte[] slice(byte[] data, int off, int len) {
-        if (off < 0 || len < 0 || off+len > data.length) {
-            throw statusWordFailure(SW_WRONG_LENGTH);
-        }
-        if (len == 0) {
-            return empty;
-        }
-        byte[] out = new byte[(short) len];
-        copyBytes(data, off, out, 0, len);
-        return out;
-    }
 }

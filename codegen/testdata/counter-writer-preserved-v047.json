@@ -1,0 +1,10 @@
+{
+  "counter-client-kotlin/build.gradle.kts": "213b6841443f6039bc1245f55cab23dc2ad48ae46b8c6e758aa185374efe4825",
+  "counter-client-kotlin/settings.gradle.kts": "3fd69e79fc4b86391839f120a98b57feb7aa3ff3d28b858912ebabb11f23f3bd",
+  "counter-client-kotlin/src/main/kotlin/counter/CounterClient.kt": "0ad18b724d279bf90028f2b458517a413c8670ef46251f242f94be2d5965434c",
+  "counter-client-swift/Package.swift": "3bd993eaa775bed48ab3055a668f4acc0d9dde2edf7348236c81b92ec0e5c26b",
+  "counter-client-swift/Sources/CounterClient/CounterClient.swift": "05233a2ce688277b176ca99ceb67367d1cd1b128be64b2f83679b8b66f080a73",
+  "counter-server-javacard/build.gradle": "7d9c45f27e580496f8b6c59a73deca821ce151bdce509770141cb376867c9c06",
+  "counter-server-javacard/settings.gradle": "999ff6eca624741352f4afa30c6ed63490ff0a61a9b3f10c5a2257b36f9ea321",
+  "counter-server-javacard/src/main/java/counter/CounterTransport.java": "945237cdf753d289fad9e4843730aaa91394d66853933e36de06b36ddf200c16"
+}
