@@ -69,39 +69,45 @@ public abstract class CounterSkeleton {
      * before writing output. Handlers must respect capacity and never retain
      * request/output references. A rejected call yields no sendable length;
      * output may already contain handler writes and is not rolled back.
+     * Caller workspace is a separate nonnull bounded borrowed span, including
+     * valid empty spans. Its capacity never widens the exact reply capacity.
+     * Consume live input before overlapping scratch writes and preserve live
+     * output through the final send. All borrowed references are command-local.
      */
     public final short dispatchTo(byte ins, byte p1, byte p2,
             byte[] requestBuffer, short requestOffset, short requestLength,
-            byte[] output, short outputOffset, short outputCapacity) {
+            byte[] output, short outputOffset, short outputCapacity,
+            byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         if (requestBuffer == null && (requestOffset != 0 || requestLength != 0)) {
             throw statusWordFailure(SW_WRONG_LENGTH);
         }
         byte[] requestData = safeBytes(requestBuffer);
         checkWindow(requestData, requestOffset, requestLength);
         checkWindow(output, outputOffset, outputCapacity);
+        checkWindow(callerWorkspace, callerWorkspaceOffset, callerWorkspaceCapacity);
         switch (ins) {
             case INS_INCREMENT:
-                return handleIncrement(p1, p2, requestData, requestOffset, requestLength, output, outputOffset, outputCapacity);
+                return handleIncrement(p1, p2, requestData, requestOffset, requestLength, output, outputOffset, outputCapacity, callerWorkspace, callerWorkspaceOffset, callerWorkspaceCapacity);
             case INS_DECREMENT:
-                return handleDecrement(p1, p2, requestData, requestOffset, requestLength, output, outputOffset, outputCapacity);
+                return handleDecrement(p1, p2, requestData, requestOffset, requestLength, output, outputOffset, outputCapacity, callerWorkspace, callerWorkspaceOffset, callerWorkspaceCapacity);
             case INS_GET:
-                return handleGet(p1, p2, requestData, requestOffset, requestLength, output, outputOffset, outputCapacity);
+                return handleGet(p1, p2, requestData, requestOffset, requestLength, output, outputOffset, outputCapacity, callerWorkspace, callerWorkspaceOffset, callerWorkspaceCapacity);
             case INS_RESET:
-                return handleReset(p1, p2, requestData, requestOffset, requestLength, output, outputOffset, outputCapacity);
+                return handleReset(p1, p2, requestData, requestOffset, requestLength, output, outputOffset, outputCapacity, callerWorkspace, callerWorkspaceOffset, callerWorkspaceCapacity);
             case INS_SET_LIMIT:
-                return handleSetLimit(p1, p2, requestData, requestOffset, requestLength, output, outputOffset, outputCapacity);
+                return handleSetLimit(p1, p2, requestData, requestOffset, requestLength, output, outputOffset, outputCapacity, callerWorkspace, callerWorkspaceOffset, callerWorkspaceCapacity);
             case INS_GET_INFO:
-                return handleGetInfo(p1, p2, requestData, requestOffset, requestLength, output, outputOffset, outputCapacity);
+                return handleGetInfo(p1, p2, requestData, requestOffset, requestLength, output, outputOffset, outputCapacity, callerWorkspace, callerWorkspaceOffset, callerWorkspaceCapacity);
             case INS_STORE:
-                return handleStore(p1, p2, requestData, requestOffset, requestLength, output, outputOffset, outputCapacity);
+                return handleStore(p1, p2, requestData, requestOffset, requestLength, output, outputOffset, outputCapacity, callerWorkspace, callerWorkspaceOffset, callerWorkspaceCapacity);
             case INS_LOAD:
-                return handleLoad(p1, p2, requestData, requestOffset, requestLength, output, outputOffset, outputCapacity);
+                return handleLoad(p1, p2, requestData, requestOffset, requestLength, output, outputOffset, outputCapacity, callerWorkspace, callerWorkspaceOffset, callerWorkspaceCapacity);
             case INS_SET_COUNT:
-                return handleSetCount(p1, p2, requestData, requestOffset, requestLength, output, outputOffset, outputCapacity);
+                return handleSetCount(p1, p2, requestData, requestOffset, requestLength, output, outputOffset, outputCapacity, callerWorkspace, callerWorkspaceOffset, callerWorkspaceCapacity);
             case INS_SET_ENABLED:
-                return handleSetEnabled(p1, p2, requestData, requestOffset, requestLength, output, outputOffset, outputCapacity);
+                return handleSetEnabled(p1, p2, requestData, requestOffset, requestLength, output, outputOffset, outputCapacity, callerWorkspace, callerWorkspaceOffset, callerWorkspaceCapacity);
             case INS_GET_HASH:
-                return handleGetHash(p1, p2, requestData, requestOffset, requestLength, output, outputOffset, outputCapacity);
+                return handleGetHash(p1, p2, requestData, requestOffset, requestLength, output, outputOffset, outputCapacity, callerWorkspace, callerWorkspaceOffset, callerWorkspaceCapacity);
             default:
                 throw statusWordFailure(SW_INS_NOT_SUPPORTED);
         }
@@ -113,7 +119,7 @@ public abstract class CounterSkeleton {
 
     // --- Dispatch wiring (reads request fields, calls abstract method, returns encoded response) ---
 
-    private short handleIncrement(byte p1, byte p2, byte[] requestData, short requestOffset, short requestLength, byte[] output, short outputOffset, short outputCapacity) {
+    private short handleIncrement(byte p1, byte p2, byte[] requestData, short requestOffset, short requestLength, byte[] output, short outputOffset, short outputCapacity, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         // request: amount(u8) in P1
         if (requestLength != 0) {
             throw statusWordFailure(SW_WRONG_LENGTH);
@@ -122,12 +128,12 @@ public abstract class CounterSkeleton {
         if (outputCapacity < 2) {
             throw statusWordFailure(SW_WRONG_LENGTH);
         }
-        short result = onIncrement(amount);
+        short result = onIncrement(amount, callerWorkspace, callerWorkspaceOffset, callerWorkspaceCapacity);
         packU16(output, outputOffset, result);
         return (short) 2;
     }
 
-    private short handleDecrement(byte p1, byte p2, byte[] requestData, short requestOffset, short requestLength, byte[] output, short outputOffset, short outputCapacity) {
+    private short handleDecrement(byte p1, byte p2, byte[] requestData, short requestOffset, short requestLength, byte[] output, short outputOffset, short outputCapacity, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         // request: amount(u8) in P1
         if (requestLength != 0) {
             throw statusWordFailure(SW_WRONG_LENGTH);
@@ -136,35 +142,35 @@ public abstract class CounterSkeleton {
         if (outputCapacity < 2) {
             throw statusWordFailure(SW_WRONG_LENGTH);
         }
-        short result = onDecrement(amount);
+        short result = onDecrement(amount, callerWorkspace, callerWorkspaceOffset, callerWorkspaceCapacity);
         packU16(output, outputOffset, result);
         return (short) 2;
     }
 
-    private short handleGet(byte p1, byte p2, byte[] requestData, short requestOffset, short requestLength, byte[] output, short outputOffset, short outputCapacity) {
+    private short handleGet(byte p1, byte p2, byte[] requestData, short requestOffset, short requestLength, byte[] output, short outputOffset, short outputCapacity, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         if (requestLength != 0) {
             throw statusWordFailure(SW_WRONG_LENGTH);
         }
         if (outputCapacity < 2) {
             throw statusWordFailure(SW_WRONG_LENGTH);
         }
-        short result = onGet();
+        short result = onGet(callerWorkspace, callerWorkspaceOffset, callerWorkspaceCapacity);
         packU16(output, outputOffset, result);
         return (short) 2;
     }
 
-    private short handleReset(byte p1, byte p2, byte[] requestData, short requestOffset, short requestLength, byte[] output, short outputOffset, short outputCapacity) {
+    private short handleReset(byte p1, byte p2, byte[] requestData, short requestOffset, short requestLength, byte[] output, short outputOffset, short outputCapacity, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         if (requestLength != 0) {
             throw statusWordFailure(SW_WRONG_LENGTH);
         }
         if (outputCapacity < 0) {
             throw statusWordFailure(SW_WRONG_LENGTH);
         }
-        onReset();
+        onReset(callerWorkspace, callerWorkspaceOffset, callerWorkspaceCapacity);
         return (short) 0;
     }
 
-    private short handleSetLimit(byte p1, byte p2, byte[] requestData, short requestOffset, short requestLength, byte[] output, short outputOffset, short outputCapacity) {
+    private short handleSetLimit(byte p1, byte p2, byte[] requestData, short requestOffset, short requestLength, byte[] output, short outputOffset, short outputCapacity, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         // request: limit(u16) in data
         if (requestLength != 2) {
             throw statusWordFailure(SW_WRONG_LENGTH);
@@ -173,18 +179,18 @@ public abstract class CounterSkeleton {
         if (outputCapacity < 0) {
             throw statusWordFailure(SW_WRONG_LENGTH);
         }
-        onSetLimit(limit);
+        onSetLimit(limit, callerWorkspace, callerWorkspaceOffset, callerWorkspaceCapacity);
         return (short) 0;
     }
 
-    private short handleGetInfo(byte p1, byte p2, byte[] requestData, short requestOffset, short requestLength, byte[] output, short outputOffset, short outputCapacity) {
+    private short handleGetInfo(byte p1, byte p2, byte[] requestData, short requestOffset, short requestLength, byte[] output, short outputOffset, short outputCapacity, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         if (requestLength != 0) {
             throw statusWordFailure(SW_WRONG_LENGTH);
         }
         if (outputCapacity < 5) {
             throw statusWordFailure(SW_WRONG_LENGTH);
         }
-        short produced = onGetInfo(output, outputOffset, (short) 5);
+        short produced = onGetInfo(output, outputOffset, (short) 5, callerWorkspace, callerWorkspaceOffset, callerWorkspaceCapacity);
         if (produced < 0 || produced > outputCapacity) {
             throw statusWordFailure(SW_WRONG_LENGTH);
         }
@@ -194,7 +200,7 @@ public abstract class CounterSkeleton {
         return produced;
     }
 
-    private short handleStore(byte p1, byte p2, byte[] requestData, short requestOffset, short requestLength, byte[] output, short outputOffset, short outputCapacity) {
+    private short handleStore(byte p1, byte p2, byte[] requestData, short requestOffset, short requestLength, byte[] output, short outputOffset, short outputCapacity, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         // request: data(bytes) in request data
         if (requestLength < 0) {
             throw statusWordFailure(SW_WRONG_LENGTH);
@@ -204,22 +210,22 @@ public abstract class CounterSkeleton {
         if (outputCapacity < 0) {
             throw statusWordFailure(SW_WRONG_LENGTH);
         }
-        onStore(requestData, dataOffset, dataLength);
+        onStore(requestData, dataOffset, dataLength, callerWorkspace, callerWorkspaceOffset, callerWorkspaceCapacity);
         return (short) 0;
     }
 
-    private short handleLoad(byte p1, byte p2, byte[] requestData, short requestOffset, short requestLength, byte[] output, short outputOffset, short outputCapacity) {
+    private short handleLoad(byte p1, byte p2, byte[] requestData, short requestOffset, short requestLength, byte[] output, short outputOffset, short outputCapacity, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         if (requestLength != 0) {
             throw statusWordFailure(SW_WRONG_LENGTH);
         }
-        short produced = onLoad(output, outputOffset, outputCapacity);
+        short produced = onLoad(output, outputOffset, outputCapacity, callerWorkspace, callerWorkspaceOffset, callerWorkspaceCapacity);
         if (produced < 0 || produced > outputCapacity) {
             throw statusWordFailure(SW_WRONG_LENGTH);
         }
         return produced;
     }
 
-    private short handleSetCount(byte p1, byte p2, byte[] requestData, short requestOffset, short requestLength, byte[] output, short outputOffset, short outputCapacity) {
+    private short handleSetCount(byte p1, byte p2, byte[] requestData, short requestOffset, short requestLength, byte[] output, short outputOffset, short outputCapacity, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         // request: value(u32) in data
         if (requestLength != 4) {
             throw statusWordFailure(SW_WRONG_LENGTH);
@@ -228,11 +234,11 @@ public abstract class CounterSkeleton {
         if (outputCapacity < 0) {
             throw statusWordFailure(SW_WRONG_LENGTH);
         }
-        onSetCount(value);
+        onSetCount(value, callerWorkspace, callerWorkspaceOffset, callerWorkspaceCapacity);
         return (short) 0;
     }
 
-    private short handleSetEnabled(byte p1, byte p2, byte[] requestData, short requestOffset, short requestLength, byte[] output, short outputOffset, short outputCapacity) {
+    private short handleSetEnabled(byte p1, byte p2, byte[] requestData, short requestOffset, short requestLength, byte[] output, short outputOffset, short outputCapacity, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         // request: enabled(bool) in P1
         if (requestLength != 0) {
             throw statusWordFailure(SW_WRONG_LENGTH);
@@ -241,18 +247,18 @@ public abstract class CounterSkeleton {
         if (outputCapacity < 0) {
             throw statusWordFailure(SW_WRONG_LENGTH);
         }
-        onSetEnabled(enabled);
+        onSetEnabled(enabled, callerWorkspace, callerWorkspaceOffset, callerWorkspaceCapacity);
         return (short) 0;
     }
 
-    private short handleGetHash(byte p1, byte p2, byte[] requestData, short requestOffset, short requestLength, byte[] output, short outputOffset, short outputCapacity) {
+    private short handleGetHash(byte p1, byte p2, byte[] requestData, short requestOffset, short requestLength, byte[] output, short outputOffset, short outputCapacity, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         if (requestLength != 0) {
             throw statusWordFailure(SW_WRONG_LENGTH);
         }
         if (outputCapacity < 32) {
             throw statusWordFailure(SW_WRONG_LENGTH);
         }
-        short produced = onGetHash(output, outputOffset, (short) 32);
+        short produced = onGetHash(output, outputOffset, (short) 32, callerWorkspace, callerWorkspaceOffset, callerWorkspaceCapacity);
         if (produced < 0 || produced > outputCapacity) {
             throw statusWordFailure(SW_WRONG_LENGTH);
         }
@@ -265,46 +271,46 @@ public abstract class CounterSkeleton {
     // --- Abstract methods — developer implements these ---
 
     /** increment(amount: u8) → value: u16 */
-    protected abstract short onIncrement(byte amount);
+    protected abstract short onIncrement(byte amount, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity);
 
     /** decrement(amount: u8) → value: u16 */
-    protected abstract short onDecrement(byte amount);
+    protected abstract short onDecrement(byte amount, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity);
 
     /** get() → value: u16 */
-    protected abstract short onGet();
+    protected abstract short onGet(byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity);
 
     /** reset() */
-    protected abstract void onReset();
+    protected abstract void onReset(byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity);
 
     /** setLimit(limit: u16) */
-    protected abstract void onSetLimit(short limit);
+    protected abstract void onSetLimit(short limit, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity);
 
     /**
      * getInfo() → {value: u16, limit: u16, version: u8}
      * Write encoded response bytes in schema field order; return produced length.
      */
-    protected abstract short onGetInfo(byte[] output, short outputOffset, short outputCapacity);
+    protected abstract short onGetInfo(byte[] output, short outputOffset, short outputCapacity, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity);
 
     /** store(data: bytes) */
-    protected abstract void onStore(byte[] data, short dataOffset, short dataLength);
+    protected abstract void onStore(byte[] data, short dataOffset, short dataLength, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity);
 
     /**
      * load() → data: bytes
      * Write response bytes into the output span; return produced length.
      */
-    protected abstract short onLoad(byte[] output, short outputOffset, short outputCapacity);
+    protected abstract short onLoad(byte[] output, short outputOffset, short outputCapacity, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity);
 
     /** setCount(value: u32) */
-    protected abstract void onSetCount(int value);
+    protected abstract void onSetCount(int value, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity);
 
     /** setEnabled(enabled: bool) */
-    protected abstract void onSetEnabled(boolean enabled);
+    protected abstract void onSetEnabled(boolean enabled, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity);
 
     /**
      * getHash() → hash: bytes_fixed
      * Write response bytes into the output span; return produced length.
      */
-    protected abstract short onGetHash(byte[] output, short outputOffset, short outputCapacity);
+    protected abstract short onGetHash(byte[] output, short outputOffset, short outputCapacity, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity);
 
     // No-message, numeric-only exception: java.lang.String is not safely
     // convertible on real Java Card Classic runtimes (no StringBuilder,

@@ -232,7 +232,7 @@ public final class StreamDemoBoundedStreamRuntime implements StreamDemoStreamEnd
             short responseLimitIn, short responseChunkIn, short shortResponseLengthIn,
             Handler handler, byte p1, byte p2,
             byte[] requestBuffer, short requestOffset, short requestLength,
-            byte[] responseBuffer, short responseOffset, short responseCapacity) {
+            byte[] responseBuffer, short responseOffset, short responseCapacity, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         calls++;
         methodId = methodIdIn;
         operation = operationIn;
@@ -261,31 +261,31 @@ public final class StreamDispatchHarness extends StreamDemoSkeleton {
         super(null);
     }
 
-    protected byte onGetVersion() {
+    protected byte onGetVersion(byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         return (byte) 0;
     }
 
     protected short onProcessPacketStream(
             byte[] input, short inputOffset, short inputLength,
-            byte[] output, short outputOffset, short outputCapacity) {
+            byte[] output, short outputOffset, short outputCapacity, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         return (short) 0;
     }
 
     protected short onIssueReportStream(
             byte[] input, short inputOffset, short inputLength,
-            byte[] output, short outputOffset, short outputCapacity) {
+            byte[] output, short outputOffset, short outputCapacity, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         return (short) 0;
     }
 
     protected short onAdjacentLowStream(
             byte[] input, short inputOffset, short inputLength,
-            byte[] output, short outputOffset, short outputCapacity) {
+            byte[] output, short outputOffset, short outputCapacity, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         return (short) 0;
     }
 
     protected short onAdjacentHighStream(
             byte[] input, short inputOffset, short inputLength,
-            byte[] output, short outputOffset, short outputCapacity) {
+            byte[] output, short outputOffset, short outputCapacity, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         return (short) 0;
     }
 
@@ -300,7 +300,7 @@ public final class StreamDispatchHarness extends StreamDemoSkeleton {
             String row;
             try {
                 harness.dispatchStreamTo(ins, (byte) 0, (byte) 0,
-                        buffer, (short) 0, (short) 0, buffer, (short) 0, (short) 8);
+                        buffer, (short) 0, (short) 0, buffer, (short) 0, (short) 8, buffer, (short) 0, (short) 8);
                 if (StreamDemoBoundedStreamRuntime.calls != 1) {
                     row = "reached-the-runtime-" + StreamDemoBoundedStreamRuntime.calls + "-times";
                 } else {

@@ -34,22 +34,22 @@ generate: build-codegen
 	$(CODEGEN_BIN) --all --out-dir $(GEN_DIR) --verbose $(EXAMPLE_DIR)/counter.toml
 
 build-bridge:
-	cd bridge && ./gradlew build -q
+	cd bridge && ./gradlew build --no-daemon --max-workers=2 -q
 
 build-applet:
-	cd $(EXAMPLE_DIR)/applet && ./gradlew build -q
+	cd $(EXAMPLE_DIR)/applet && ./gradlew build --no-daemon --max-workers=2 -q
 
 build-cli: generate
 	cd $(CLI_DIR) && swift build
 
 build-kotlin-cli: generate
-	cd $(KOTLIN_CLI_DIR) && gradle build
+	cd $(KOTLIN_CLI_DIR) && gradle build --no-daemon --max-workers=2
 
 test-applet:
-	cd $(EXAMPLE_DIR)/applet && ./gradlew test -q
+	cd $(EXAMPLE_DIR)/applet && ./gradlew test --no-daemon --max-workers=2 -q
 
 test-bridge:
-	cd bridge && ./gradlew test -q
+	cd bridge && ./gradlew test --no-daemon --max-workers=2 -q
 
 # --- Run ---
 
@@ -60,7 +60,7 @@ run-example: build-cli
 	cd $(CLI_DIR) && swift run
 
 run-kotlin-example: build-kotlin-cli
-	cd $(KOTLIN_CLI_DIR) && gradle run
+	cd $(KOTLIN_CLI_DIR) && gradle run --no-daemon --max-workers=2
 
 # --- E2E ---
 
@@ -85,7 +85,7 @@ test-cap:
 	@test -n "$(JCRPC_ANT_JAVACARD_JAR)" || { echo "JCRPC_ANT_JAVACARD_JAR is required" >&2; exit 2; }
 	@test -n "$(JCRPC_JCKIT_DIR)" || { echo "JCRPC_JCKIT_DIR is required" >&2; exit 2; }
 	@command -v ant >/dev/null 2>&1 || { echo "ant is required" >&2; exit 2; }
-	cd $(CODEGEN_DIR) && go test . -run '^(TestGeneratedJavaStreamPackageConvertsToCAP|TestCounterWriterClassicCAP)$$' -count=1 -v
+	cd $(CODEGEN_DIR) && go test . -run '^(TestGeneratedJavaStreamPackageConvertsToCAP|TestCounterWriterClassicCAP|TestFacadeMixedCallerWorkspaceClassicCAP)$$' -count=1 -v
 
 release-check: test test-kotlin-contract test-cap
 

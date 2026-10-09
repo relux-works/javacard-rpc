@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -83,9 +84,10 @@ func TestRunWholeCleanupGeneration(t *testing.T) {
 	}
 }
 
-// Real TOML CLI generation reproduces all five measured whole-mode Auth Java
-// source identities. B4 restores the actual keeper fixture's CLA; this is source
-// equality evidence only, not a replay of Auth or provider-store measurement.
+// Retains the historical measured whole-mode identities and unchanged transport.
+// Real TOML CLI generation matches the five regenerated signed v0.5.0 source
+// identities, whose four API-bearing files intentionally changed. B4 restores
+// the keeper fixture CLA. This is source parity, not repeated Auth measurement.
 func TestRunWholeCleanupMeasuredAuthIdentity(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "compatibility", "inputs", "bsim-auth-2d23abd.toml"))
 	if err != nil {
@@ -99,12 +101,23 @@ func TestRunWholeCleanupMeasuredAuthIdentity(t *testing.T) {
 	if code := run([]string{"--java", "ru.mts.bsimid.applet.auth", "--stream-memory", "clear_on_reset", "--simulator-dependency", "works.relux:jcardsim:3.0.5.9-relux.2", "--out-dir", out, schema}, &stderr); code != 0 {
 		t.Fatalf("measured Auth generation: %d %s", code, &stderr)
 	}
-	expected := map[string]string{
+	historical := map[string]string{
 		"BSimAuthBoundedStreamRuntime.java": "5063f440b42c08619274cd16206541c55c98004acd3e3c8b727c26e9af9fb90f",
 		"BSimAuthSkeleton.java":             "42ad5fa6ca43e93eb39e9d28e60b302ffd6bd51080a0e2f773c02e25f0d56cd7",
 		"BSimAuthStreamAPDUAdapter.java":    "ffeabcbc5fd61f86ce2fbe66912f0d8d228a1fbde4ac10737934e5c9ce49c8f8",
 		"BSimAuthStreamEndpoint.java":       "52af535eb9bf709701333862ea07d3e58f61f21ddbeac02da83465d525c05c09",
 		"BSimAuthTransport.java":            "75ff6fd4b035769347be3c6debe4e458e0141a0544f2f779a727939c626fb279",
+	}
+	var expected map[string]string
+	receipt, err := os.ReadFile(filepath.Join("..", "..", "testdata", "bsim-whole-source-v050.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = json.Unmarshal(receipt, &expected); err != nil {
+		t.Fatal(err)
+	}
+	if len(expected) != len(historical) || expected["BSimAuthTransport.java"] != historical["BSimAuthTransport.java"] {
+		t.Fatal("historical transport/inventory identity changed")
 	}
 	checked := 0
 	for name, data := range cleanupFiles(t, out) {

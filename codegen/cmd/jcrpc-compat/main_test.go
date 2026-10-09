@@ -32,11 +32,13 @@ func TestManifestRefusals(t *testing.T) {
 		t.Fatal(e)
 	}
 	cases := map[string]func(*compat.Manifest){
-		"missing-kotlin": func(m *compat.Manifest) { m.Targets = append(m.Targets[:1], m.Targets[2:]...) },
-		"duplicate":      func(m *compat.Manifest) { m.Targets[1] = m.Targets[0] },
-		"unknown":        func(m *compat.Manifest) { m.Targets[1].Target = "other" },
-		"schema":         func(m *compat.Manifest) { m.Schema = 2 },
-		"input-drift":    func(m *compat.Manifest) { m.BSimInput.SHA256 = strings.Repeat("0", 64) },
+		"missing-kotlin":         func(m *compat.Manifest) { m.Targets = append(m.Targets[:1], m.Targets[2:]...) },
+		"duplicate":              func(m *compat.Manifest) { m.Targets[1] = m.Targets[0] },
+		"unknown":                func(m *compat.Manifest) { m.Targets[1].Target = "other" },
+		"schema":                 func(m *compat.Manifest) { m.Schema = 2 },
+		"old-facade-version":     func(m *compat.Manifest) { m.FacadeVersion = "0.5.0" },
+		"missing-facade-version": func(m *compat.Manifest) { m.FacadeVersion = "" },
+		"input-drift":            func(m *compat.Manifest) { m.BSimInput.SHA256 = strings.Repeat("0", 64) },
 	}
 	for _, field := range []string{"repository", "tag", "tag_object", "commit", "go_module", "backend_version", "backend_import", "runtime", "swift_package", "swift_exact_version"} {
 		field := field
@@ -160,16 +162,16 @@ func TestManifestAPIRefusals(t *testing.T) {
 			if kind == "obsolete" || kind == "lower-direct-require" {
 				b = bytes.Replace(b, []byte("github.com/relux-works/javacard-rpc/pluginapi v0.1.1"), []byte("github.com/relux-works/javacard-rpc/pluginapi v0.1.0"), 1)
 				if kind == "obsolete" {
-					// v0.4.0 transitively requires API v0.1.1. Only the real
+					// v0.5.0 transitively requires API v0.1.1. Only the real
 					// historical backend tuple can select the obsolete API;
 					// lowering a direct require alone is an accepted MVS control.
-					b = bytes.Replace(b, []byte("javacard-rpc-server-javacard v0.4.0"), []byte("javacard-rpc-server-javacard v0.3.0"), 1)
+					b = bytes.Replace(b, []byte("javacard-rpc-server-javacard v0.5.0"), []byte("javacard-rpc-server-javacard v0.3.0"), 1)
 					for _, name := range []string{"compatibility/runtime-manifest.json", "compatibility/releases/javacard.json"} {
 						raw, err := os.ReadFile(filepath.Join(root, name))
 						if err != nil {
 							t.Fatal(err)
 						}
-						for _, pair := range [][2]string{{"v0.4.0", "v0.3.0"}, {"javacard:0.4.0", "javacard:0.3.0"}, {"625e714c3d4ce9b00fa298b7b4d57208d1417bfb", "0a41fc2cd30f0b1e0871a0e2ff74583a8c04128c"}, {"2d8786271c3cb3419ee524c8af7d1c8e5fac2e13", "e6d02397fc94a771c2e2ac9f27f43a2ea7c5a0de"}} {
+						for _, pair := range [][2]string{{"v0.5.0", "v0.3.0"}, {"javacard:0.5.0", "javacard:0.3.0"}, {"96bf35555bba8a040eba880622629ff0f25b2556", "0a41fc2cd30f0b1e0871a0e2ff74583a8c04128c"}, {"9bbf1db745834f3efefb54846f26bec6310f8c22", "e6d02397fc94a771c2e2ac9f27f43a2ea7c5a0de"}} {
 							raw = bytes.ReplaceAll(raw, []byte(pair[0]), []byte(pair[1]))
 						}
 						if err := os.WriteFile(filepath.Join(root, name), raw, 0644); err != nil {

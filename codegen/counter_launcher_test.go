@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/relux-works/javacard-rpc/codegen/internal/wirecompat"
 )
 
 type counterLaunchFixture struct {
@@ -127,7 +129,7 @@ func TestCounterLauncherUsesPublishedClasspath(t *testing.T) {
 				if !os.IsNotExist(err) {
 					t.Fatalf("skip-build ran Gradle: %s (%v)", builds, err)
 				}
-			} else if err != nil || strings.Count(string(builds), "build -q") != 2 {
+			} else if err != nil || strings.Count(string(builds), "build --no-daemon --max-workers=2 -q") != 2 {
 				t.Fatalf("build calls: %s (%v)", builds, err)
 			}
 		})
@@ -247,7 +249,7 @@ func TestCounterLauncherBuildFailure(t *testing.T) {
 		t.Fatal("failed build launched Java")
 	}
 	b, err := os.ReadFile(f.buildCalls)
-	if err != nil || strings.Count(string(b), "build -q") != 1 {
+	if err != nil || strings.Count(string(b), "build --no-daemon --max-workers=2 -q") != 1 {
 		t.Fatalf("build failure continued: %s (%v)", b, err)
 	}
 }
@@ -353,23 +355,29 @@ func TestCounterCanonicalE2E(t *testing.T) {
 	t.Log("canonical make e2e real exit 0")
 }
 
-// Both actual generator binaries emit all nine counter package files identically
-// to the accepted checkpoint. A changed-byte control demonstrates the comparator
-// notices drift; this claim covers the counter IDL, not all consumer schemas.
+// Both actual generator binaries preserve the nine-file inventory and eight
+// non-skeleton files. The Java skeleton intentionally migrates to caller scratch;
+// the very emitted Java corpora run shared wire probes against the immutable
+// baseline. A changed Swift byte is detected separately.
 func TestCounterGeneratedPackageParity(t *testing.T) {
 	baseline := os.Getenv("JCRPC_COUNTER_BASELINE_GEN")
 	if baseline == "" {
-		t.Skip("set JCRPC_COUNTER_BASELINE_GEN to the accepted checkpoint generator")
+		t.Skip("set JCRPC_COUNTER_BASELINE_GEN to the immutable v0.5.0 generator")
 	}
-	candidate := filepath.Join(t.TempDir(), "jcrpc-gen")
-	if out, err := exec.Command("go", "build", "-o", candidate, "./cmd/jcrpc-gen").CombinedOutput(); err != nil {
-		t.Fatalf("candidate build: %v\n%s", err, out)
+	candidate := os.Getenv("JCRPC_CANDIDATE_GEN")
+	if candidate == "" {
+		candidate = filepath.Join(t.TempDir(), "jcrpc-gen")
+		if out, err := exec.Command("go", "build", "-o", candidate, "./cmd/jcrpc-gen").CombinedOutput(); err != nil {
+			t.Fatalf("candidate build: %v\n%s", err, out)
+		}
 	}
 	trees := []map[string]string{}
 	var candidateOutput string
+	var outputs []string
 	for _, bin := range []string{baseline, candidate} {
 		dir := t.TempDir()
 		candidateOutput = dir
+		outputs = append(outputs, dir)
 		cmd := exec.Command(bin, "--all", "--out-dir", dir, "../examples/counter/counter.toml")
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("generation: %v\n%s", err, out)
@@ -390,6 +398,11 @@ func TestCounterGeneratedPackageParity(t *testing.T) {
 			if err != nil {
 				return err
 			}
+			if strings.HasSuffix(rel, "Skeleton.java") {
+				// Deliberately breaking Java API; inventory still counts this file.
+				tree[rel] = "authorized caller-workspace API delta"
+				return nil
+			}
 			tree[rel] = fmt.Sprintf("%x", sha256.Sum256(b))
 			return nil
 		})
@@ -397,6 +410,13 @@ func TestCounterGeneratedPackageParity(t *testing.T) {
 			t.Fatal(err)
 		}
 		trees = append(trees, tree)
+	}
+	schema, err := ParseFile("../examples/counter/counter.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wirecompat.Compare(t, outputs[0], outputs[1], schema); err != nil {
+		t.Fatal(err)
 	}
 	if len(trees[0]) != 9 || !reflect.DeepEqual(trees[0], trees[1]) {
 		t.Fatalf("generated package byte drift: checkpoint %v; candidate %v", trees[0], trees[1])
@@ -419,5 +439,5 @@ func TestCounterGeneratedPackageParity(t *testing.T) {
 	if reflect.DeepEqual(trees[0], control) {
 		t.Fatal("parity comparator missed changed-byte control")
 	}
-	t.Logf("9 of 9 generated files identical; changed-byte control rejected; SHA-256: %v", trees[1])
+	t.Logf("8 of 9 generated files identical; Java skeleton API delta declared; changed-byte control rejected; SHA-256: %v", trees[1])
 }

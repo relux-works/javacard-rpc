@@ -19,6 +19,7 @@ import javacard.framework.JCSystem;
  * discriminating and not satisfied by a vacuous comparison.
  */
 public final class DispatchAllocationHarness {
+    private static final byte[] EMPTY_WORKSPACE = new byte[0];
 	private static final int UNKNOWN_FRAMES = 10_000;
 	private static final int ALTERNATING_STATUS_FRAMES = 10_000;
 
@@ -52,7 +53,7 @@ public final class DispatchAllocationHarness {
 
         // 2. A valid request still succeeds afterwards (the applet is not wedged).
         byte[] response = new byte[133];
-        short produced = logic.dispatchTo(INS_INCREMENT, (byte) 5, (byte) 0, null, (short)0, (short)0, response, (short)0, (short)133);
+        short produced = logic.dispatchTo(INS_INCREMENT, (byte) 5, (byte) 0, null, (short)0, (short)0, response, (short)0, (short)133, response, (short)0, (short)133);
         require(produced == 2 && response[0] == 0 && response[1] == 5,
                 "increment after the unknown-INS loop must return 0x0005");
         require(logic.increments == 1, "handler must run exactly once");
@@ -79,8 +80,8 @@ public final class DispatchAllocationHarness {
 
         // 4. Still healthy after the helper failures.
         logic.infoLength = 5;
-        require(logic.dispatchTo(INS_GET_INFO, (byte)0, (byte)0, null, (short)0, (short)0, new byte[133], (short)0, (short)133) == 5, "getInfo must recover");
-        require(logic.dispatchTo(INS_GET, (byte)0, (byte)0, null, (short)0, (short)0, new byte[133], (short)0, (short)133) == 2, "get must recover");
+        require(logic.dispatchTo(INS_GET_INFO, (byte)0, (byte)0, null, (short)0, (short)0, new byte[133], (short)0, (short)133, EMPTY_WORKSPACE, (short)0, (short)0) == 5, "getInfo must recover");
+        require(logic.dispatchTo(INS_GET, (byte)0, (byte)0, null, (short)0, (short)0, new byte[133], (short)0, (short)133, EMPTY_WORKSPACE, (short)0, (short)0) == 2, "get must recover");
 
         // 5. Positive control: a developer-thrown business exception is a different object.
         logic.failIncrement = true;
@@ -188,7 +189,7 @@ public final class DispatchAllocationHarness {
 
     private static CounterSkeleton.StatusWordException expectFailure(Logic logic, byte ins, byte p1, byte[] data) {
         try {
-            logic.dispatchTo(ins, p1, (byte)0, data, (short)0, (short)(data == null ? 0 : data.length), new byte[133], (short)0, (short)133);
+            logic.dispatchTo(ins, p1, (byte)0, data, (short)0, (short)(data == null ? 0 : data.length), new byte[133], (short)0, (short)133, EMPTY_WORKSPACE, (short)0, (short)0);
         } catch (CounterSkeleton.StatusWordException failure) {
             return failure;
         }
@@ -216,7 +217,7 @@ public final class DispatchAllocationHarness {
             });
         }
 
-        protected short onIncrement(byte amount) {
+        protected short onIncrement(byte amount, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
             if (failIncrement) {
                 throw new StatusWordException(SW_BUSINESS);
             }
@@ -225,41 +226,41 @@ public final class DispatchAllocationHarness {
             return value;
         }
 
-        protected short onDecrement(byte amount) {
+        protected short onDecrement(byte amount, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
             value = (short) (value - (amount & 0xFF));
             return value;
         }
 
-        protected short onGet() {
+        protected short onGet(byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
             return value;
         }
 
-        protected void onReset() {
+        protected void onReset(byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
             value = 0;
         }
 
-        protected void onSetLimit(short limit) {
+        protected void onSetLimit(short limit, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         }
 
-        protected short onGetInfo(byte[] output, short outputOffset, short outputCapacity) {
+        protected short onGetInfo(byte[] output, short outputOffset, short outputCapacity, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
             return (short)infoLength;
         }
 
-        protected void onStore(byte[] data, short dataOffset, short dataLength) {
+        protected void onStore(byte[] data, short dataOffset, short dataLength, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         }
 
-        protected short onLoad(byte[] output, short outputOffset, short outputCapacity) {
+        protected short onLoad(byte[] output, short outputOffset, short outputCapacity, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
             return (short)0;
         }
 
-        protected void onSetCount(int newValue) {
+        protected void onSetCount(int newValue, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
             value = (short) newValue;
         }
 
-        protected void onSetEnabled(boolean enabled) {
+        protected void onSetEnabled(boolean enabled, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         }
 
-        protected short onGetHash(byte[] output, short outputOffset, short outputCapacity) {
+        protected short onGetHash(byte[] output, short outputOffset, short outputCapacity, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
             return (short)hashLength;
         }
     }

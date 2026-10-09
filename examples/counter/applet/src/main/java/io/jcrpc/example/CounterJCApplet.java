@@ -54,7 +54,8 @@ public class CounterJCApplet extends Applet {
         try {
             short produced = logic.dispatchTo(ins, p1, p2,
                     buffer, requestOffset, requestLength,
-                    buffer, outputOffset, outputCapacity);
+                    buffer, outputOffset, outputCapacity,
+                    buffer, (short) 0, (short) buffer.length);
             // Only a successful dispatch supplies a sendable span.
             if (produced > 0) {
                 apdu.setOutgoingAndSend(outputOffset, produced);

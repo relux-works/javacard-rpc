@@ -229,7 +229,8 @@ Generated code uses dependency injection; no framework imports in your applet lo
 ```java
 public class MyCounterApplet extends CounterSkeleton {
     @Override
-    protected short onIncrement(byte amount) {
+    protected short onIncrement(byte amount, byte[] callerWorkspace,
+            short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         short next = (short) (counter + (amount & 0xFF));
         if (next > limit) {
             throw statusWordFailure(SW_OVERFLOW); // no per-call allocation
@@ -252,8 +253,9 @@ Ordinary callers now use `dispatchTo` with validated request/output spans.
 Byte/packed callbacks write to caller storage and return a produced `short`;
 byte-sequence inputs become borrowed buffer/offset/length triples. Receive the
 complete supported request and capture headers before overlapping writes. Keep
-APDU/input/output references command-local and send only after successful return.
-See [the v0.5.0 migration](RELEASE-NOTES-0.5.0.md) for whole-only capacity,
+APDU/input/output/scratch references command-local and send only after successful return.
+Append the independent scratch triple to `dispatchTo` and every callback.
+See [the v0.6.0 migration](CALLER-WORKSPACE.md) for whole-only capacity,
 trusted-handler, no-rollback, optional-int and physical deployment bounds.
 
 **Host side**: use the generated client:
@@ -445,11 +447,15 @@ JCRPC_JCARDSIM_JAR=/path/to/jcardsim.jar \
 JCRPC_ALLOCATION_IDL=/path/to/bsim-auth.toml \
 JCRPC_ALLOCATION_BASELINE=/path/to/v0.4.4/generated/io/jcrpc/bsim \
 go test . -run TestBSimAuthGeneratedAllocationPayload -count=1 -v
-JCRPC_BASELINE_GEN=/path/to/v0.4.4/jcrpc-gen \
+JCRPC_BASELINE_GEN=/path/to/v0.5.0/jcrpc-gen \
 JCRPC_CANDIDATE_GEN=/path/to/candidate/jcrpc-gen \
-JCRPC_ALLOCATION_IDL=/path/to/bsim-auth.toml \
-go test . -run TestCLIOutputCompatibility -count=1 -v
+go test . -run '^(TestCLIOutputCompatibility|TestCLIWireParityRejects.*)$' -count=1 -v
 ```
+
+The parity gate compares unchanged files byte for byte and executes the same
+CLI-emitted Java corpus against facade v0.5.0 for INS, CLA, status and reply width.
+It allows the trailing caller-workspace API change. An optional
+`JCRPC_ALLOCATION_IDL` adds a consumer schema; no consumer acceptance is inferred.
 
 Upstream jCardSim 3.0.5.9 refuses `MessageDigest.getInstance(..., true)` at
 installation, so the real `clear_on_reset` lane needs a compatible simulator
@@ -460,10 +466,12 @@ object headers, reference widths and digest/provider/JCRE allocations.
 
 
 The facade composes the released target backends at compile time: Java Card
-v0.4.0, Kotlin v0.3.0 and Swift v0.2.2, through pluginapi v0.1.1.
-See [0.5.0 release notes](RELEASE-NOTES-0.5.0.md) for the ordinary writer migration,
-verified root source bootstrap, response-RAM removal requirements, actual
-dependency provenance and qualification bounds. The historical
+v0.5.0, Kotlin v0.3.0 and Swift v0.2.2, through pluginapi v0.1.1.
+Facade **v0.6.0** adds explicit caller workspace to every Java callback.
+See [0.6.0 release notes](RELEASE-NOTES-0.6.0.md) and
+[the copyable caller migration](CALLER-WORKSPACE.md) for ordinary/stream API,
+exact pins and consumer authority/lifetime bounds.
+[0.5.0 release notes](RELEASE-NOTES-0.5.0.md) preserve the historical ordinary writer migration. The historical
 [0.4.7 release notes](RELEASE-NOTES-0.4.7.md) retain the opt-in cleanup contract,
 published prerequisite identities and historical selection bounds.
 TOML parsing, validation, target selection, filesystem writes and compatible Go
@@ -527,3 +535,20 @@ work is open source.
 ## License
 
 Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+Current Java caller scratch is independent of the reply span. Follow
+[CALLER-WORKSPACE.md](CALLER-WORKSPACE.md) for ordinary/stream `process` and
+`processData` migration and consumer RAM/NVM/physical authority limits.
+For the mixed real simulator and Classic fixtures:
+
+```sh
+JCRPC_JCARDSIM_JAR=/path/to/jcardsim.jar go -C codegen test . -run '^TestFacadeMixedCallerWorkspace(Dispatch|RealAPDU)$' -count=1 -v
+JCRPC_ANT_JAVACARD_JAR=/path/to/ant-javacard.jar JCRPC_JCKIT_DIR=/path/to/jc305u4_kit make test-cap
+```
+
+`JCRPC_FACADE_CAP_OUT=$PWD/.temp/caps` retains stream/mixed CAPs and raw converter
+logs; `JCRPC_COUNTER_CAP_OUT=$PWD/.temp/caps` retains Counter library/wrapper CAPs.
+Native Gradle entry points use `--no-daemon --max-workers=2`. Keep JVM gates
+sequential when sharing a JVM lease (`go test ./... -p=1`). Exact local receipts
+and diagnostic failures belong under task-scoped `.temp/`; public CI status is
+supplied by the hosting provider on the release owner's exact public head.

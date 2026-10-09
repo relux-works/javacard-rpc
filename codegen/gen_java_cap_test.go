@@ -1,6 +1,7 @@
 package codegen
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"os/exec"
@@ -62,6 +63,11 @@ func convertStreamCAP(t *testing.T, ant, antJavaCardJar, jckitDir, policy string
 	if err != nil {
 		t.Fatalf("GenerateJavaSkeleton returned error: %v", err)
 	}
+	convertFacadeFixtureCAP(t, ant, antJavaCardJar, jckitDir, result, streamDemoAppletFixture)
+}
+
+func convertFacadeFixtureCAP(t *testing.T, ant, antJavaCardJar, jckitDir string, result *JavaGenerationResult, fixture string) {
+	t.Helper()
 
 	root := t.TempDir()
 	sourceDir := filepath.Join(root, "src", "io", "jcrpc", "streamdemo", "server")
@@ -74,7 +80,7 @@ func convertStreamCAP(t *testing.T, ant, antJavaCardJar, jckitDir, policy string
 		result.StreamEndpointName + ".java":    result.StreamEndpointSource,
 		result.StreamRuntimeName + ".java":     result.StreamRuntimeSource,
 		result.StreamAPDUAdapterName + ".java": result.StreamAPDUAdapterSource,
-		"StreamDemoApplet.java":                []byte(streamDemoAppletFixture),
+		"StreamDemoApplet.java":                []byte(fixture),
 	}
 	for name, source := range files {
 		if err := os.WriteFile(filepath.Join(sourceDir, name), source, 0o644); err != nil {
@@ -108,10 +114,29 @@ func convertStreamCAP(t *testing.T, ant, antJavaCardJar, jckitDir, policy string
 
 	command := exec.Command(ant, "-f", buildPath, "cap")
 	command.Dir = root
-	if output, err := command.CombinedOutput(); err != nil {
+	output, err := command.CombinedOutput()
+	code := -1
+	if command.ProcessState != nil {
+		code = command.ProcessState.ExitCode()
+	}
+	t.Logf("actual Ant command %s; exit %d\n%s", command.String(), code, output)
+	if err != nil {
 		t.Fatalf("CAP conversion failed: %v\n%s", err, output)
 	}
 	if info, err := os.Stat(filepath.Join(root, "streamdemo.cap")); err != nil || info.Size() == 0 {
 		t.Fatalf("CAP output missing or empty: %v", err)
+	}
+	capBytes, err := os.ReadFile(filepath.Join(root, "streamdemo.cap"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("CAP SHA256=%x bytes=%d", sha256.Sum256(capBytes), len(capBytes))
+	if out := os.Getenv("JCRPC_FACADE_CAP_OUT"); out != "" {
+		if err = os.MkdirAll(out, 0755); err != nil {
+			t.Fatal(err)
+		}
+		name := strings.ReplaceAll(t.Name(), "/", "_")
+		writeTestFile(t, filepath.Join(out, name+".cap"), capBytes)
+		writeTestFile(t, filepath.Join(out, name+".log"), output)
 	}
 }

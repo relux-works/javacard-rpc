@@ -2,7 +2,7 @@
 
 `runtime-manifest.json` records the canonical repository, signed annotated tag,
 peeled commit, backend module/version/import and unchanged native identity for
-Java Card v0.4.0, Kotlin v0.3.0 and Swift v0.2.2. `releases/*.json` transcribe the
+Java Card v0.5.0, Kotlin v0.3.0 and Swift v0.2.2. `releases/*.json` transcribe the
 reviewed release receipts supplied to this integration. `allowed_signers` contains
 only the two public signing keys used by those receipts. Bootstrap verifies the
 actual tag object, peeled commit, checkout HEAD and signature, then refuses tracked
@@ -39,12 +39,12 @@ Bootstrap needs Git/network access and downloads exact runtime checkouts under
 identity directories. The first native builds populate Gradle plugin/dependency
 caches. Swift packages use local paths and have no remote package dependencies.
 Preparing a consumer builds the facade executable and regenerates the repository
-examples plus pinned bsim schema. Facade v0.5.0 changes ordinary Java
-skeletons to the writer contract; Kotlin/Swift and stream sources remain unchanged.
+examples plus pinned bsim schema. Facade v0.6.0 appends independent caller workspace to ordinary and stream Java
+callbacks/entry points. Kotlin/Swift wire and package identities remain unchanged.
 The JVM fixture implements packed and borrowed-span callbacks, checks fixed
 capacity rejection before callback entry, and preserves the existing encoded wire.
 
-See [v0.5.0 migration and bounds](../RELEASE-NOTES-0.5.0.md). Ordinary callers
+See [v0.6.0 migration and bounds](../CALLER-WORKSPACE.md). Ordinary callers
 fully receive supported input, capture headers before overlapping output, pass
 validated spans to `dispatchTo`, and send only the exact successful produced
 span. APDU/input/output references are command-local. Consume borrowed bytes
@@ -108,7 +108,7 @@ includeBuild('/absolute/generated/counter-server-javacard')
 Keep the runtime checkouts at native roots. The historical generated Kotlin
 manifest still names runtime `0.2.0` for byte parity; the root substitution selects
 the manifest's verified Kotlin v0.3.0 checkout for every included project. The
-Java Card substitution selects the signed v0.4.0 runtime, including when a
+Java Card substitution selects the signed v0.5.0 runtime, including when a
 generated ecosystem coordinate retains its historical version for byte parity. Consumers pin
 only the facade and use its runtime manifest; they do not independently guess
 compatible runtime versions or edit generated Gradle files.

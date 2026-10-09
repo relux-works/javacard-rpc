@@ -19,6 +19,7 @@ type mutant struct{ Name, File, Before, After, Module, Package, Test, Bound stri
 
 // Assertions are specific to the planted behavior, not setup/build failures.
 var assertions = map[string]string{
+	"manifest-facade-old-version":    "invalid manifest admitted: old-facade-version",
 	"manifest-writer-old-signed-tag": "mismatched signed writer receipt admitted: <nil>",
 	"cleanup-parser-written":         "cleanup metadata lost:",
 	"cleanup-validator-bogus":        "cleanup validation refusal missing: 0",
@@ -84,7 +85,8 @@ var assertions = map[string]string{
 }
 
 var mutants = []mutant{
-	{"manifest-writer-old-signed-tag", "codegen/internal/compat/manifest.go", "if !reflect.DeepEqual(p, receipt) {", "compared := p; if p.Target == \"javacard\" && p.TagObject == \"ca371dc528c263aa7892cc42ffebe4192c081e9c\" { compared.TagObject = receipt.TagObject }; if !reflect.DeepEqual(compared, receipt) {", "codegen", "./cmd/jcrpc-compat", "TestManifestReleasedWriterReceiptRefusals/old-signed-tag", "admits exactly the authentic v0.3.1 signed tag object paired with the v0.4.0 writer receipt"},
+	{"manifest-facade-old-version", "codegen/internal/compat/manifest.go", `m.FacadeVersion != "0.6.0"`, `(m.FacadeVersion != "0.6.0" && m.FacadeVersion != "0.5.0")`, "codegen", "./cmd/jcrpc-compat", "TestManifestRefusals/old-facade-version", "admits exactly facade version 0.5.0; missing and unrelated versions still refuse"},
+	{"manifest-writer-old-signed-tag", "codegen/internal/compat/manifest.go", "if !reflect.DeepEqual(p, receipt) {", "compared := p; if p.Target == \"javacard\" && p.TagObject == \"ca371dc528c263aa7892cc42ffebe4192c081e9c\" { compared.TagObject = receipt.TagObject }; if !reflect.DeepEqual(compared, receipt) {", "codegen", "./cmd/jcrpc-compat", "TestManifestReleasedWriterReceiptRefusals/old-signed-tag", "admits exactly the authentic v0.3.1 signed tag object paired with the v0.5.0 caller-workspace receipt"},
 	{"cleanup-parser-written", "codegen/parser.go", "raw.Applet.StreamWorkspaceCleanup,", "strings.Replace(raw.Applet.StreamWorkspaceCleanup, \"written-bytes-only\", \"\", 1),", "codegen", ".", "TestParseStreamWorkspaceCleanup/written-bytes-only", "drops exactly written-bytes-only during normalization; all other selector bytes remain"},
 	{"cleanup-validator-bogus", "codegen/validator.go", "case \"\":\n\t\t// Unspecified cleanup", "case \"\", \"bogus\":\n\t\t// Unspecified cleanup", "codegen", "./cmd/jcrpc-gen", "TestRunStreamWorkspaceCleanupValidation/persistent/bogus", "admits exactly unknown selector bogus; other invalid modes remain refused"},
 	{"cleanup-whole-transient", "codegen/validator.go", "if s.Applet.StreamWorkspace != \"persistent\" {", "if s.Applet.StreamWorkspace != \"persistent\" && !(s.Applet.StreamWorkspaceCleanup == pluginapi.StreamWorkspaceCleanupWholeReplyArea && s.Applet.StreamWorkspace == \"transient\") {", "codegen", "./cmd/jcrpc-gen", "TestRunStreamWorkspaceCleanupRefusals/whole-transient", "admits whole-reply-area only with explicit transient storage; other invalid combinations remain refused"},

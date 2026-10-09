@@ -34,9 +34,10 @@ type Input struct {
 	SHA256 string `json:"sha256"`
 }
 type Manifest struct {
-	Schema    int      `json:"schema"`
-	Targets   []Target `json:"targets"`
-	BSimInput Input    `json:"bsim_input"`
+	Schema        int      `json:"schema"`
+	FacadeVersion string   `json:"facade_version"`
+	Targets       []Target `json:"targets"`
+	BSimInput     Input    `json:"bsim_input"`
 }
 
 func readJSON(path string, v any) error {
@@ -64,6 +65,9 @@ func Check(repo, manifest string) (Manifest, error) {
 	}
 	if m.Schema != 1 || len(m.Targets) != 3 {
 		return m, fmt.Errorf("manifest must contain exactly three targets, schema 1")
+	}
+	if m.FacadeVersion != "0.6.0" {
+		return m, fmt.Errorf("facade release version must be 0.6.0")
 	}
 	seen := map[string]bool{}
 	for _, p := range m.Targets {

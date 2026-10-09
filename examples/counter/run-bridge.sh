@@ -10,9 +10,9 @@ COUNTER_SERVER_DIR="$SCRIPT_DIR/generated/counter-server-javacard"
 
 if [ "${JCRPC_SKIP_BUILD:-0}" != "1" ]; then
   echo "[run-bridge] building bridge..."
-  (cd "$BRIDGE_DIR" && ./gradlew build -q) || exit 1
+  (cd "$BRIDGE_DIR" && ./gradlew build --no-daemon --max-workers=2 -q) || exit 1
   echo "[run-bridge] building counter applet..."
-  (cd "$APPLET_DIR" && ./gradlew build -q) || exit 1
+  (cd "$APPLET_DIR" && ./gradlew build --no-daemon --max-workers=2 -q) || exit 1
 fi
 
 # Validate the build-published classpath before any bridge JVM is started.

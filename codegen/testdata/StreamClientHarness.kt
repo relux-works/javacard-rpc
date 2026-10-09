@@ -67,7 +67,7 @@ private class RuntimeBackedTransport(
             digest.copyInto(output, destinationOffset = outputOffset.toInt())
         }
 
-    private val handler = StreamDemoStreamEndpoint.Handler { _, input, inputOffset, inputLength, output, outputOffset, _ ->
+    private val handler = StreamDemoStreamEndpoint.Handler { _, input, inputOffset, inputLength, output, outputOffset, _, _, _, _ ->
             handlerExecutions++
             var left = 0
             var right = inputLength.toInt() - 1
@@ -129,6 +129,9 @@ private class RuntimeBackedTransport(
                 request,
                 0,
                 request.size.toShort(),
+                response,
+                0,
+                response.size.toShort(),
                 response,
                 0,
                 response.size.toShort(),

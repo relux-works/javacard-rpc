@@ -39,7 +39,7 @@ jobs:
           JCRPC_JCARDSIM_JAR: ${{ github.workspace }}/.temp/toolchain/jcardsim.jar
           JCRPC_COMPAT_ROOT: ${{ github.workspace }}/.temp/consumer
         working-directory: codegen
-        run: go test ./... -count=1
+        run: go test ./... -p=1 -count=1
       - name: Prove network denial and prepared includeBuild consumers
         run: |
           go -C codegen test ./cmd/jcrpc-compat -run '^TestOfflineGuardRejectsDependencyAccess$' -count=1 -v

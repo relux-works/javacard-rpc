@@ -77,7 +77,7 @@ func TestPreparedWriterConsumerCoordinates(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	for _, coordinate := range []string{"io.jcrpc:javacard-rpc-server-javacard:0.4.0", "io.jcrpc:javacard-rpc-client-kotlin:0.3.0"} {
+	for _, coordinate := range []string{"io.jcrpc:javacard-rpc-server-javacard:0.5.0", "io.jcrpc:javacard-rpc-client-kotlin:0.3.0"} {
 		if !strings.Contains(string(build), coordinate) {
 			t.Fatalf("missing pin %s", coordinate)
 		}

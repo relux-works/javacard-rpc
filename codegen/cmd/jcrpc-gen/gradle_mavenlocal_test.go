@@ -121,7 +121,7 @@ func seedTempMavenRepo(t *testing.T, jar string) string {
 // Maven local repository redirected to repo, so neither the network nor the
 // host ~/.m2 can satisfy the probe coordinate.
 func gradleCompile(gradle, dir, repo string) ([]byte, error) {
-	cmd := exec.Command(gradle, "compileJava", "--offline", "--no-daemon", "-q",
+	cmd := exec.Command(gradle, "compileJava", "--offline", "--no-daemon", "--max-workers=2", "-q",
 		"-Dmaven.repo.local="+repo)
 	cmd.Dir = dir
 	return cmd.CombinedOutput()

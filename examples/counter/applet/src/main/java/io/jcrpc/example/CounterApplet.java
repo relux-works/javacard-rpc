@@ -76,7 +76,7 @@ public class CounterApplet extends CounterSkeleton {
     }
 
     @Override
-    protected short onIncrement(byte amount) {
+    protected short onIncrement(byte amount, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         short inc = (short) (amount & 0xFF);
         short newVal = (short) (counter + inc);
         if (newVal > limit || newVal < counter) { // overflow or exceeds limit
@@ -87,7 +87,7 @@ public class CounterApplet extends CounterSkeleton {
     }
 
     @Override
-    protected short onDecrement(byte amount) {
+    protected short onDecrement(byte amount, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         short dec = (short) (amount & 0xFF);
         if (dec > counter) {
             throw statusWordFailure(SW_UNDERFLOW);
@@ -97,22 +97,22 @@ public class CounterApplet extends CounterSkeleton {
     }
 
     @Override
-    protected short onGet() {
+    protected short onGet(byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         return counter;
     }
 
     @Override
-    protected void onReset() {
+    protected void onReset(byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         counter = 0;
     }
 
     @Override
-    protected void onSetLimit(short newLimit) {
+    protected void onSetLimit(short newLimit, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         limit = newLimit;
     }
 
     @Override
-    protected short onGetInfo(byte[] output, short outputOffset, short outputCapacity) {
+    protected short onGetInfo(byte[] output, short outputOffset, short outputCapacity, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         int off = outputOffset;
         off = packU16(output, off, counter);
         off = packU16(output, off, limit);
@@ -123,40 +123,40 @@ public class CounterApplet extends CounterSkeleton {
     }
 
     @Override
-    protected void onStore(byte[] data, short dataOffset, short dataLength) {
+    protected void onStore(byte[] data, short dataOffset, short dataLength, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         if (dataLength > MAX_DATA_SIZE) throw statusWordFailure(SW_DATA_TOO_LONG);
         Util.arrayCopyNonAtomic(data, dataOffset, storedData, (short) 0, dataLength);
         storedDataLen = dataLength;
     }
 
     @Override
-    protected short onLoad(byte[] output, short outputOffset, short outputCapacity) {
+    protected short onLoad(byte[] output, short outputOffset, short outputCapacity, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         if (storedDataLen < 0) throw statusWordFailure(SW_NO_DATA);
         return writeBytes(storedData, (short) 0, (short) storedDataLen,
                 output, outputOffset, outputCapacity);
     }
 
     @Override
-    protected short onGetSpki(byte[] output, short outputOffset, short outputCapacity) {
+    protected short onGetSpki(byte[] output, short outputOffset, short outputCapacity, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         return writeBytes(mockSpki, (short) 0, (short) mockSpki.length,
                 output, outputOffset, outputCapacity);
     }
 
     @Override
-    protected short onGetImsi(byte[] output, short outputOffset, short outputCapacity) {
+    protected short onGetImsi(byte[] output, short outputOffset, short outputCapacity, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         return writeBytes(MOCK_IMSI, (short) 0, (short) MOCK_IMSI.length,
                 output, outputOffset, outputCapacity);
     }
 
     @Override
-    protected short onGetAppletInfo(byte[] output, short outputOffset, short outputCapacity) {
+    protected short onGetAppletInfo(byte[] output, short outputOffset, short outputCapacity, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         return writeBytes(mockAppletInfo, (short) 0, (short) mockAppletInfo.length,
                 output, outputOffset, outputCapacity);
     }
 
     @Override
     protected short onSignChallenge(byte[] challenge, short challengeOffset, short challengeLength,
-            byte[] output, short outputOffset, short outputCapacity) {
+            byte[] output, short outputOffset, short outputCapacity, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         if (challengeLength == 0) throw statusWordFailure(SW_EMPTY_CHALLENGE);
         short partLen = challengeLength > 8 ? (short) 8 : challengeLength;
         short length = (short) (6 + 2 * partLen);
@@ -180,14 +180,14 @@ public class CounterApplet extends CounterSkeleton {
     }
 
     @Override
-    protected short onGetDisplayName(byte[] output, short outputOffset, short outputCapacity) {
+    protected short onGetDisplayName(byte[] output, short outputOffset, short outputCapacity, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         return writeBytes(MOCK_DISPLAY_NAME, (short) 0, (short) MOCK_DISPLAY_NAME.length,
                 output, outputOffset, outputCapacity);
     }
 
     @Override
     protected short onEchoMessage(byte[] message, short messageOffset, short messageLength,
-            byte[] output, short outputOffset, short outputCapacity) {
+            byte[] output, short outputOffset, short outputCapacity, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         return writeBytes(message, messageOffset, messageLength, output, outputOffset, outputCapacity);
     }
 

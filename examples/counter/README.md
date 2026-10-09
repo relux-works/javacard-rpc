@@ -21,13 +21,13 @@ It also ships two host-side executables against the same bridge and applet:
 
 The generated directory is intentionally gitignored. Recreate it with `make generate`.
 
-The Java Card v0.4.0 backend uses ordinary `dispatchTo` and caller-owned output
+The Java Card v0.5.0 backend uses ordinary `dispatchTo` and caller-owned output
 spans. `CounterJCApplet.process` captures headers, receives every supported short
 input fragment into the APDU buffer, and sends only the successful produced span.
 Byte/packed callbacks write directly; byte inputs are borrowed span triples.
 The mock signature consumes needed input into install-time owned scratch before
 overlap. No command-time request/reply arrays or retained APDU binding are used.
-See [migration and capacity bounds](../../RELEASE-NOTES-0.5.0.md).
+See [migration and capacity bounds](../../CALLER-WORKSPACE.md).
 
 Classic qualification converts the generated `counter` library and the real
 `io.jcrpc.counter.example` wrapper/business package separately, preserving both

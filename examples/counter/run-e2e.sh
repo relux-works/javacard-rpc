@@ -56,4 +56,4 @@ echo "[run-e2e] running Swift E2E harness..."
 (cd "$SCRIPT_DIR/cli" && swift run)
 
 echo "[run-e2e] running Kotlin E2E harness..."
-(cd "$SCRIPT_DIR/kotlin-cli" && gradle run)
+(cd "$SCRIPT_DIR/kotlin-cli" && gradle run --no-daemon --max-workers=2)

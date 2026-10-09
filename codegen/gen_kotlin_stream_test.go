@@ -110,7 +110,7 @@ includeBuild("` + filepath.ToSlash(runtimeFixture) + `") {
 `
 	writeTestFile(t, filepath.Join(root, "settings.gradle.kts"), []byte(settings))
 
-	cmd := exec.Command(gradle, "test", "--no-daemon", "-q")
+	cmd := exec.Command(gradle, "test", "--no-daemon", "--max-workers=2", "-q")
 	cmd.Dir = root
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("generated Kotlin stream harness failed: %v\n%s", err, output)

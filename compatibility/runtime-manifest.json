@@ -1,7 +1,8 @@
 {
  "schema": 1,
+ "facade_version": "0.6.0",
  "targets": [
-  {"target":"javacard","repository":"https://github.com/relux-works/javacard-rpc-server-javacard","tag":"v0.4.0","tag_object":"2d8786271c3cb3419ee524c8af7d1c8e5fac2e13","commit":"625e714c3d4ce9b00fa298b7b4d57208d1417bfb","go_module":"github.com/relux-works/javacard-rpc-server-javacard","backend_version":"v0.4.0","backend_import":"github.com/relux-works/javacard-rpc-server-javacard/codegen","runtime":"io.jcrpc:javacard-rpc-server-javacard:0.4.0"},
+  {"target":"javacard","repository":"https://github.com/relux-works/javacard-rpc-server-javacard","tag":"v0.5.0","tag_object":"9bbf1db745834f3efefb54846f26bec6310f8c22","commit":"96bf35555bba8a040eba880622629ff0f25b2556","go_module":"github.com/relux-works/javacard-rpc-server-javacard","backend_version":"v0.5.0","backend_import":"github.com/relux-works/javacard-rpc-server-javacard/codegen","runtime":"io.jcrpc:javacard-rpc-server-javacard:0.5.0"},
   {"target":"kotlin","repository":"https://github.com/relux-works/javacard-rpc-client-kotlin","tag":"v0.3.0","tag_object":"6362729d42eeb8e893a169589ab018de04a38297","commit":"df7a85ea9715ae00827971ddb6608704b2f6ff29","go_module":"github.com/relux-works/javacard-rpc-client-kotlin","backend_version":"v0.3.0","backend_import":"github.com/relux-works/javacard-rpc-client-kotlin/codegen","runtime":"io.jcrpc:javacard-rpc-client-kotlin:0.3.0"},
   {"target":"swift","repository":"https://github.com/relux-works/javacard-rpc-client-swift","tag":"v0.2.2","tag_object":"e0052b54b590a32faa96baad7b0a8d3fbc2efe0d","commit":"3db025b025238ab21b2b458bd0cf0cad285223f4","go_module":"github.com/relux-works/javacard-rpc-client-swift","backend_version":"v0.2.2","backend_import":"github.com/relux-works/javacard-rpc-client-swift/codegen","runtime":"JavaCardRPCClient","swift_package":"javacard-rpc-client-swift","swift_exact_version":"0.2.2"}
  ],

@@ -7,12 +7,16 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/relux-works/javacard-rpc/codegen/internal/wirecompat"
 )
 
 // Invoke both actual CLIs and compare every file in each output package. The
-// default baseline is signed v0.4.5, with no byte exceptions.
-// Opt-in changes only Java skeleton/runtime; Kotlin and ordinary Swift output
-// remain byte-identical, and streamed Swift retains its existing refusal.
+// baseline is the immutable facade v0.5.0 CLI. Caller workspace intentionally
+// changes Java skeleton/endpoint/runtime/adapter APIs; all other files remain
+// byte-identical. The storage-policy control changes only skeleton/runtime.
+// The same emitted Java corpora must satisfy IDL-grounded wire probes against
+// that baseline, including stream runtime/endpoint/adapter. Swift stream refuses.
 func TestCLIOutputCompatibility(t *testing.T) {
 	baseline := os.Getenv("JCRPC_BASELINE_GEN")
 	candidate := os.Getenv("JCRPC_CANDIDATE_GEN")
@@ -62,6 +66,9 @@ func TestCLIOutputCompatibility(t *testing.T) {
 						return e
 					}
 					count++
+					if !optin && (strings.HasSuffix(rel, "Skeleton.java") || strings.HasSuffix(rel, "BoundedStreamRuntime.java") || strings.HasSuffix(rel, "StreamEndpoint.java") || strings.HasSuffix(rel, "StreamAPDUAdapter.java")) {
+						return nil
+					}
 					if optin && (strings.HasSuffix(rel, "Skeleton.java") || strings.HasSuffix(rel, "BoundedStreamRuntime.java")) {
 						return nil
 					}
@@ -74,7 +81,7 @@ func TestCLIOutputCompatibility(t *testing.T) {
 					t.Fatal(e)
 				}
 				rightCount := 0
-				_ = filepath.WalkDir(right, func(_ string, d os.DirEntry, e error) error {
+				e = filepath.WalkDir(right, func(_ string, d os.DirEntry, e error) error {
 					if e != nil {
 						return e
 					}
@@ -83,10 +90,20 @@ func TestCLIOutputCompatibility(t *testing.T) {
 					}
 					return nil
 				})
+				if e != nil {
+					t.Fatal(e)
+				}
 				if rightCount != count {
 					t.Fatalf("file inventory delta: %d vs %d", count, rightCount)
 				}
 				t.Logf("compared %d generated files, optin=%t", count, optin)
+			}
+			schema, e := ParseFile(input)
+			if e != nil {
+				t.Fatal(e)
+			}
+			if e := wirecompat.Compare(t, old, now, schema); e != nil {
+				t.Fatal(e)
 			}
 			compare(old, now, false)
 			if !strings.HasSuffix(input, "counter.toml") {
@@ -101,6 +118,9 @@ func TestCLIOutputCompatibility(t *testing.T) {
 				}
 				persistent := t.TempDir()
 				generate(candidate, persistent, persistentInput)
+				if e := wirecompat.Compare(t, now, persistent, schema); e != nil {
+					t.Fatal(e)
+				}
 				compare(now, persistent, true)
 				for _, bin := range []string{baseline, candidate} {
 					out := t.TempDir()

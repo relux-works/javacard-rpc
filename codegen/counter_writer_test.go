@@ -126,6 +126,10 @@ func TestCounterWriterNarrowingMutants(t *testing.T) {
 }
 
 func runCounterWriterHarness(t *testing.T, mutantFile, mutantSource string, expected ...string) {
+	runCounterWriterHarnessSource(t, counterWriterHarness, mutantFile, mutantSource, expected...)
+}
+
+func runCounterWriterHarnessSource(t *testing.T, harness, mutantFile, mutantSource string, expected ...string) {
 	t.Helper()
 	root := t.TempDir()
 	paths := []string{writeJavaCardJCSystemStub(t, root)}
@@ -135,7 +139,7 @@ func runCounterWriterHarness(t *testing.T, mutantFile, mutantSource string, expe
 		"javacard/framework/ISOException.java": counterExceptionStub,
 		"javacard/framework/APDU.java":         counterAPDUStub,
 		"javacard/framework/Util.java":         counterUtilStub,
-		"CounterWriterHarness.java":            counterWriterHarness,
+		"CounterWriterHarness.java":            harness,
 	} {
 		p := filepath.Join(root, name)
 		if e := os.MkdirAll(filepath.Dir(p), 0755); e != nil {
@@ -178,7 +182,11 @@ func runCounterWriterHarness(t *testing.T, mutantFile, mutantSource string, expe
 		if e == nil || !strings.Contains(string(b), expected[0]) {
 			t.Fatalf("survivor/unrelated failure: %v\n%s; want %s", e, b, expected[0])
 		}
-		t.Logf("killed by TestCounterWriterAPDUContract: %s; child exit %d", expected[0], cmd.ProcessState.ExitCode())
+		name := "TestCounterWriterAPDUContract"
+		if strings.Contains(harness, "callerWorkspace();") {
+			name = "TestCounterCallerWorkspaceContract"
+		}
+		t.Logf("killed by %s: %s; child exit %d", name, expected[0], cmd.ProcessState.ExitCode())
 	} else if e != nil {
 		t.Fatalf("consumer: %v\n%s", e, b)
 	}
@@ -297,9 +305,9 @@ public class CounterWriterHarness {
  }
  static class Tracking extends CounterApplet{
   int calls;
-  protected short onGetInfo(byte[] out,short off,short cap){calls++;check(cap==7,"fixed callback capacity");return super.onGetInfo(out,off,cap);}
+  protected short onGetInfo(byte[] out,short off,short cap, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity){calls++;check(cap==7,"fixed callback capacity");return super.onGetInfo(out,off,cap,callerWorkspace,callerWorkspaceOffset,callerWorkspaceCapacity);}
  }
- static short dispatch(CounterApplet logic,int ins,byte[] in,short inOff,short len,byte[] out,short off,short cap){return logic.dispatchTo((byte)ins,(byte)0,(byte)0,in,inOff,len,out,off,cap);}
+ static short dispatch(CounterApplet logic,int ins,byte[] in,short inOff,short len,byte[] out,short off,short cap){return logic.dispatchTo((byte)ins,(byte)0,(byte)0,in,inOff,len,out,off,cap, out, off, cap);}
  static void spanReject(CounterApplet logic,int ins,byte[] in,short inOff,short len,byte[] out,short off,short cap,String message){
   try{dispatch(logic,ins,in,inOff,len,out,off,cap);throw new AssertionError(message);}catch(CounterSkeleton.StatusWordException e){check((e.getStatusWord()&65535)==0x6700,message+" status");}
  }

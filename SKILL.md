@@ -288,3 +288,16 @@ codegen/jcrpc-gen --java counter --out-dir examples/counter/generated examples/c
 
 - [IDL Specification](.spec/idl.md) — full TOML IDL format spec
 - [Counter Example](examples/counter/) — complete E2E example with one bridge, one applet, and Swift + Kotlin host clients
+
+## Caller workspace (facade v0.6.0)
+
+The signed JavaCard v0.5.0 backend appends independent caller workspace
+array/offset/capacity to ordinary dispatch/callbacks and stream dispatch,
+endpoint/runtime/Handler.execute/onMethodStream. Regenerate subclasses and
+handwritten adapters; no old overload is provided. Copy the entry-owned window
+from the current process/processData invocation. Keep every borrowed array
+command-local, consume input before overlap and preserve output through send/read.
+See [CALLER-WORKSPACE.md](CALLER-WORKSPACE.md) for exact pins and examples.
+Generic empty scratch is legal; Auth phase minima and physical/SD authority are
+consumer responsibilities. Test JVM gates sequentially with `--no-daemon
+--max-workers=2`; `make test-cap` also qualifies the mixed caller-workspace fixture.

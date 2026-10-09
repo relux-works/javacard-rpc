@@ -214,11 +214,11 @@ public final class StreamDemoApplet extends Applet {
         Logic() { super(new NoopTransport()); }
 
         @Override
-        protected byte onGetVersion() { return (byte) 1; }
+        protected byte onGetVersion(byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) { return (byte) 1; }
 
         @Override
         protected short onProcessPacketStream(byte[] input, short inputOffset, short inputLength,
-                byte[] output, short outputOffset, short outputCapacity) {
+                byte[] output, short outputOffset, short outputCapacity, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
             if (inputLength == 1 && input[inputOffset] == (byte) 0x7F) return (short) -1;
             for (short left = 0, right = (short) (inputLength - 1); left <= right; left++, right--) {
                 byte value = input[(short) (inputOffset + left)];
@@ -230,7 +230,7 @@ public final class StreamDemoApplet extends Applet {
 
         @Override
         protected short onIssueReportStream(byte[] input, short inputOffset, short inputLength,
-                byte[] output, short outputOffset, short outputCapacity) {
+                byte[] output, short outputOffset, short outputCapacity, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
             responseOnlyCalls++;
             output[outputOffset] = (byte) 1;
             output[(short) (outputOffset + 1)] = (byte) 2;

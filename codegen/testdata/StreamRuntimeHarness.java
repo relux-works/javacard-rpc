@@ -202,7 +202,7 @@ public final class StreamRuntimeHarness {
         StreamDemoStreamEndpoint.StreamStatusWordException businessFailure =
                 new StreamDemoStreamEndpoint.StreamStatusWordException((short) 0x6985);
         StreamDemoStreamEndpoint.Handler handler = (methodId, input, inputOffset, inputLength,
-                output, outputOffset, outputCapacity) -> { throw businessFailure; };
+                output, outputOffset, outputCapacity, callerWorkspace, callerWorkspaceOffset, callerWorkspaceCapacity) -> { throw businessFailure; };
         Session session = fixture.session((byte) 1, true, true, handler);
         byte[] response = new byte[255];
         byte[] input = new byte[]{1, 2, 3, 4};
@@ -231,7 +231,7 @@ public final class StreamRuntimeHarness {
     private static void testNegativeHandlerLengthFailsClosed() throws Exception {
         Fixture fixture = new Fixture();
         StreamDemoStreamEndpoint.Handler handler = (methodId, input, inputOffset, inputLength,
-                output, outputOffset, outputCapacity) -> (short) -1;
+                output, outputOffset, outputCapacity, callerWorkspace, callerWorkspaceOffset, callerWorkspaceCapacity) -> (short) -1;
         Session session = fixture.session((byte) 1, true, false, handler);
         byte[] response = new byte[255];
         byte[] input = new byte[]{1, 2, 3, 4};
@@ -245,7 +245,7 @@ public final class StreamRuntimeHarness {
         for (int produced : new int[]{72, 74}) {
             Fixture fixture = new Fixture();
             StreamDemoStreamEndpoint.Handler handler = (methodId, input, inputOffset, inputLength,
-                    output, outputOffset, outputCapacity) -> {
+                    output, outputOffset, outputCapacity, callerWorkspace, callerWorkspaceOffset, callerWorkspaceCapacity) -> {
                 require((outputCapacity & 0xFFFF) == 73, "exact output capacity");
                 return (short) produced;
             };
@@ -260,7 +260,7 @@ public final class StreamRuntimeHarness {
 
         Fixture fixture = new Fixture();
         StreamDemoStreamEndpoint.Handler handler = (methodId, input, inputOffset, inputLength,
-                output, outputOffset, outputCapacity) -> {
+                output, outputOffset, outputCapacity, callerWorkspace, callerWorkspaceOffset, callerWorkspaceCapacity) -> {
             require((outputCapacity & 0xFFFF) == 73, "exact output capacity");
             Arrays.fill(output, outputOffset, outputOffset + 73, (byte) 0x5A);
             return (short) 73;
@@ -424,7 +424,7 @@ public final class StreamRuntimeHarness {
                     response, (short) 1792, (short) 192,
                     exactShortResponseLength,
                     handler, p1, p2, input, inputOffset, inputLength,
-                    output, outputOffset, outputCapacity);
+                    output, outputOffset, outputCapacity, output, outputOffset, outputCapacity);
         }
     }
 
@@ -433,7 +433,7 @@ public final class StreamRuntimeHarness {
 
         @Override
         public short execute(byte methodId, byte[] input, short inputOffset, short inputLength,
-                             byte[] output, short outputOffset, short outputCapacity) {
+                             byte[] output, short outputOffset, short outputCapacity, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
             calls++;
             for (short left = 0, right = (short) (inputLength - 1); left <= right; left++, right--) {
                 byte value = input[(short) (inputOffset + left)];

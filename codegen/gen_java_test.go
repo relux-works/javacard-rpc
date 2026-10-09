@@ -315,10 +315,10 @@ func TestGenerateJavaSkeletonSupportsASCIIFields(t *testing.T) {
 	if !strings.Contains(src, "short imsiLength = (short) 15;") {
 		t.Fatalf("generated java skeleton missing fixed-length ascii request decoding:\n%s", src)
 	}
-	if !strings.Contains(src, "protected abstract void onSetImsi(byte[] imsi, short imsiOffset, short imsiLength);") {
+	if !strings.Contains(src, "protected abstract void onSetImsi(byte[] imsi, short imsiOffset, short imsiLength, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity);") {
 		t.Fatalf("generated java skeleton missing ascii request abstract method:\n%s", src)
 	}
-	if !strings.Contains(src, "protected abstract short onGetImsi(byte[] output, short outputOffset, short outputCapacity);") {
+	if !strings.Contains(src, "protected abstract short onGetImsi(byte[] output, short outputOffset, short outputCapacity, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity);") {
 		t.Fatalf("generated java skeleton missing ascii response abstract method:\n%s", src)
 	}
 }
@@ -353,7 +353,7 @@ func TestGenerateJavaSkeletonSupportsStringFields(t *testing.T) {
 	if !strings.Contains(src, "short messageLength = (short) (requestLength - 0);") {
 		t.Fatalf("generated java skeleton missing variable-length string request decoding:\n%s", src)
 	}
-	if !strings.Contains(src, "protected abstract short onEchoMessage(byte[] message, short messageOffset, short messageLength, byte[] output, short outputOffset, short outputCapacity);") {
+	if !strings.Contains(src, "protected abstract short onEchoMessage(byte[] message, short messageOffset, short messageLength, byte[] output, short outputOffset, short outputCapacity, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity);") {
 		t.Fatalf("generated java skeleton missing string abstract method:\n%s", src)
 	}
 }

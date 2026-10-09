@@ -1,0 +1,7 @@
+{
+  "BSimAuthBoundedStreamRuntime.java": "fb48a9958d7e12e4b9badde53dba1d0feea963feb2d85d1acf23240147d2ddb8",
+  "BSimAuthSkeleton.java": "aa1a44cffb0e461613b000d5cbae3d51e72b71fcbdb91a6a38d017f848cfaddf",
+  "BSimAuthStreamAPDUAdapter.java": "2cc5793bc033325919522eddfe54d2ecb7db6b4b0bf9fbc6fa88f9216c336c1b",
+  "BSimAuthStreamEndpoint.java": "ad1c1af8a05c3b9138b00f5a368b9290c7f0935787a19656ddbd8f6a25eb8539",
+  "BSimAuthTransport.java": "75ff6fd4b035769347be3c6debe4e458e0141a0544f2f779a727939c626fb279"
+}
