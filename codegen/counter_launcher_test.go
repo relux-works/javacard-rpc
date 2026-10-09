@@ -282,11 +282,20 @@ func TestCounterLauncherNarrowingMutants(t *testing.T) {
 			if err := os.MkdirAll(filepath.Join(root, "examples/counter"), 0755); err != nil {
 				t.Fatal(err)
 			}
-			b, err := os.ReadFile("counter_launcher_test.go")
-			if err != nil {
-				t.Fatal(err)
+			// Keep the real module identity for Go's internal import boundary and
+			// carry the real schema sources needed to compile the whole test file.
+			files := map[string][]byte{"examples/counter/run-bridge.sh": []byte(strings.Replace(source, p.before, p.after, 1))}
+			for _, path := range []string{"counter_launcher_test.go", "go.mod", "go.sum", "model.go", "parser.go", "internal/wirecompat/wire.go"} {
+				raw, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				files[filepath.Join("codegen", path)] = raw
 			}
-			for path, raw := range map[string][]byte{"codegen/counter_launcher_test.go": b, "codegen/go.mod": []byte("module launcher-mutant\n\ngo 1.24\n"), "examples/counter/run-bridge.sh": []byte(strings.Replace(source, p.before, p.after, 1))} {
+			for path, raw := range files {
+				if err := os.MkdirAll(filepath.Dir(filepath.Join(root, path)), 0755); err != nil {
+					t.Fatal(err)
+				}
 				if err := os.WriteFile(filepath.Join(root, path), raw, 0644); err != nil {
 					t.Fatal(err)
 				}
