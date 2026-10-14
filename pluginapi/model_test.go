@@ -72,3 +72,28 @@ func TestStreamDiscovery(t *testing.T) {
 		}
 	}
 }
+
+// Adding per-method stream metadata leaves the zero value and keyed legacy
+// Method literals unchanged and keeps the selector a plain string. It does not
+// exercise downstream validation or generation.
+func TestMethodStreamModeZeroValueCompatibility(t *testing.T) {
+	var zero Method
+	if zero.StreamMode != "" || zero.HasStream() {
+		t.Fatalf("zero Method changed: %+v", zero)
+	}
+	request := &Message{Fields: []Field{{Name: "packet", Type: FieldTypeStream, MaxLength: 64, ChunkSize: 32}}}
+	legacy := Method{Name: "sign", INS: 0x20, Request: request}
+	withMode := legacy
+	withMode.StreamMode = StreamModeChunked
+	withMode.StreamMode = ""
+	if withMode != legacy || legacy.StreamMode != "" || !legacy.HasStream() {
+		t.Fatalf("legacy metadata changed: %+v", withMode)
+	}
+	field, ok := reflect.TypeOf(zero).FieldByName("StreamMode")
+	if !ok || field.Type != reflect.TypeOf("") {
+		t.Fatal("stream mode must remain a plain string")
+	}
+	if StreamModePublicInvalidate != "public-invalidate" || StreamModeChunked != "chunked" {
+		t.Fatalf("stream mode names changed: %q / %q", StreamModePublicInvalidate, StreamModeChunked)
+	}
+}

@@ -1,10 +1,10 @@
 # javacard-rpc plugin API
 
 Module: `github.com/relux-works/javacard-rpc/pluginapi`, Go 1.24 or later.
-The released baseline is **v0.1.0**, from Git tag **pluginapi/v0.1.0**
-in the javacard-rpc repository. **v0.1.1** is prepared here for parent publication
-under **pluginapi/v0.1.1**; it is not yet published. Before publication use a
-local `replace` against the reviewed candidate. This module
+The released baseline is **v0.1.1**, from Git tag **pluginapi/v0.1.1**
+in the javacard-rpc repository. **v0.1.2** is prepared here for parent publication
+under **pluginapi/v0.1.2**; it is not yet published. Before publication depend on
+the reviewed candidate commit. This module
 contains only the shared model, options, ordered in-memory files and backend
 interface. It has no parser, semantic validator, target runtime, templates,
 registration registry or third-party module dependencies.
@@ -40,6 +40,7 @@ third-party CLI registration are not supported by v0.1.0.
 | `Options.SimulatorDependency` | Facade-trimmed and validated `group:artifact:version` coordinate for Java's compile-only dependency, including the resolved CLI default `com.klinec:jcardsim:3.0.5.9`. Direct callers must supply the resolved coordinate. Other adapters ignore it. |
 | `Schema.Applet.StreamWorkspace` | Bulk stream storage: empty/`transient`, or `persistent`. Lifecycle remains independent; persistent storage does not promise atomic interrupted wiping. |
 | `Schema.Applet.StreamWorkspaceCleanup` | Plain string cleanup selector. Empty preserves released generation, including the existing persistent default. Explicit modes apply only with `StreamWorkspace == "persistent"`. Unknown selectors and nonpersistent combinations are validation responsibilities of the facade and direct backend entry point. |
+| `Schema.Methods[name].StreamMode` | Plain string per-method stream contract, v0.1.2. Empty keeps the applet-level stream policy. A target whose generated card behavior depends on the mode must refuse a value it does not implement; host targets whose wire format is unchanged may ignore it. Backends built against v0.1.1 cannot see the field, so the facade must compose a backend that implements it. Value and combination checks belong to the facade and the direct backend entry point. |
 
 The two explicit cleanup names are centralized in this module:
 
@@ -54,6 +55,17 @@ implementation follow downstream after the API release. Adding the field
 preserves zero values, keyed literals and the `Plugin` interface; positional
 `Applet` literals must add the new trailing field. Interrupted persistent wiping
 still has no atomic secure-erasure guarantee.
+
+The two per-method stream mode names are centralized here too (v0.1.2):
+
+| Constant | Value | Per-method contract |
+| --- | --- | --- |
+| `StreamModePublicInvalidate` | `"public-invalidate"` | Unauthenticated stream APDUs are admitted. Accepted request chunks may be staged in persistent workspace; every refused APDU writes no persistent byte and invalidates the stream. A streamed result is produced into RAM on each read, never into persistent memory. |
+| `StreamModeChunked` | `"chunked"` | Each accepted request chunk reaches the handler as it arrives. Nothing is staged and no APDU of the method, accepted or refused, writes persistent memory. Short results only. |
+
+Adding `Method.StreamMode` preserves zero values, keyed literals, struct
+equality and the `Plugin` interface; positional `Method` literals must add the
+new trailing field.
 
 `Generate` returns the whole target package: source files and root Gradle/SPM
 manifests, in write/verbose order. `File.Name` is a canonical slash-separated
@@ -109,8 +121,11 @@ go test . -run '^(TestPluginAPIExternalConsumer|TestTargetAdaptersReturnWholePac
 cleanup checks into a separate module, uses `GOWORK=off`, `GOPROXY=off` and
 `GOSUMDB=off`, replaces only the candidate API, verifies the two-module consumer
 graph and dependency-free production API import graph, and builds/tests it.
-This proves local source compatibility, not public availability of v0.1.1.
+The same test also copies `testdata/stream_mode_test.go` for the v0.1.2
+per-method metadata. This proves local source compatibility, not public
+availability of v0.1.2.
 
-See [v0.1.1 release preparation](RELEASE-v0.1.1.md) for the parent publication
+See [v0.1.2 release preparation](RELEASE-v0.1.2.md) and
+[v0.1.1 release preparation](RELEASE-v0.1.1.md) for the parent publication
 handoff, and [original API release preparation](../.spec/plugin-api-release.md)
 for the historical v0.1.0 preparation record.

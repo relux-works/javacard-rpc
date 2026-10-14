@@ -17,14 +17,14 @@ func TestCleanupAPIIndependentConsumer(t *testing.T) {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
-	for _, name := range []string{"go.mod", "backend.go", "backend_test.go", "cleanup_test.go"} {
+	for _, name := range []string{"go.mod", "backend.go", "backend_test.go", "cleanup_test.go", "stream_mode_test.go"} {
 		source := filepath.Join(apiDir, "testdata", "external-consumer", name)
 		// An inert manifest name keeps this fixture in Go module ZIPs; the
 		// independent consumer still receives its manifest as go.mod.
 		if name == "go.mod" {
 			source += ".txt"
 		}
-		if name == "cleanup_test.go" {
+		if name == "cleanup_test.go" || name == "stream_mode_test.go" {
 			source = filepath.Join(apiDir, "testdata", name)
 		}
 		data, err := os.ReadFile(source)

@@ -40,7 +40,23 @@ type Method struct {
 	Description string
 	Request     *Message
 	Response    *Message
+	// StreamMode selects a per-method stream contract for a target that
+	// implements one. Empty keeps the applet-level stream policy. The model only
+	// carries the value; the facade and the target backend validate it.
+	StreamMode string
 }
+
+const (
+	// StreamModePublicInvalidate admits unauthenticated stream APDUs for this
+	// method. Accepted request chunks may be staged in persistent workspace;
+	// every refused APDU writes no persistent byte and invalidates the stream.
+	// A streamed result is produced into RAM on each read, never into NVM.
+	StreamModePublicInvalidate = "public-invalidate"
+	// StreamModeChunked delivers each accepted request chunk to the handler as
+	// it arrives. Nothing is staged and no APDU of the method, accepted or
+	// refused, writes persistent memory. Only short results are supported.
+	StreamModeChunked = "chunked"
+)
 
 // Message describes structured request or response payload fields.
 type Message struct {
