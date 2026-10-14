@@ -54,7 +54,8 @@ const (
 	StreamModePublicInvalidate = "public-invalidate"
 	// StreamModeChunked delivers each accepted request chunk to the handler as
 	// it arrives. Nothing is staged and no APDU of the method, accepted or
-	// refused, writes persistent memory. Only short results are supported.
+	// refused, writes persistent memory. A streamed result is produced into RAM
+	// on each read, never stored.
 	StreamModeChunked = "chunked"
 )
 

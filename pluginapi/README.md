@@ -61,7 +61,7 @@ The two per-method stream mode names are centralized here too (v0.1.2):
 | Constant | Value | Per-method contract |
 | --- | --- | --- |
 | `StreamModePublicInvalidate` | `"public-invalidate"` | Unauthenticated stream APDUs are admitted. Accepted request chunks may be staged in persistent workspace; every refused APDU writes no persistent byte and invalidates the stream. A streamed result is produced into RAM on each read, never into persistent memory. |
-| `StreamModeChunked` | `"chunked"` | Each accepted request chunk reaches the handler as it arrives. Nothing is staged and no APDU of the method, accepted or refused, writes persistent memory. Short results only. |
+| `StreamModeChunked` | `"chunked"` | Each accepted request chunk reaches the handler as it arrives. Nothing is staged and no APDU of the method, accepted or refused, writes persistent memory. A streamed result is produced into RAM on each read, never stored. |
 
 Adding `Method.StreamMode` preserves zero values, keyed literals, struct
 equality and the `Plugin` interface; positional `Method` literals must add the
