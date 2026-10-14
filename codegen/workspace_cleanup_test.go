@@ -2,6 +2,7 @@ package codegen
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -13,7 +14,7 @@ import (
 // Parse transports exact selector bytes into the public API without silently
 // fixing invalid spellings. Semantic validation, rather than parsing, rejects them.
 func TestParseStreamWorkspaceCleanup(t *testing.T) {
-	for _, mode := range []string{"", pluginapi.StreamWorkspaceCleanupWholeReplyArea, pluginapi.StreamWorkspaceCleanupWrittenBytesOnly, "bogus", "Written-bytes-only", " written-bytes-only "} {
+	for _, mode := range []string{"", pluginapi.StreamWorkspaceCleanupWholeReplyArea, StreamWorkspaceCleanupAuthenticatedInvalidate, pluginapi.StreamWorkspaceCleanupWrittenBytesOnly, "bogus", "Written-bytes-only", " written-bytes-only "} {
 		t.Run(mode, func(t *testing.T) {
 			input := strings.Replace(minimalValidSchemaTOML, "[applet]", fmt.Sprintf("[applet]\nstream_workspace = %q\nstream_workspace_cleanup = %q", "persistent", mode), 1)
 			s, err := Parse(strings.NewReader(input))
@@ -35,7 +36,7 @@ func TestParseStreamWorkspaceCleanup(t *testing.T) {
 // that exact test passes unmodified. The harness refuses setup/compile failures
 // as kills. Only disposable fixtures replace copied public backend sources.
 func TestCleanupNarrowingMutants(t *testing.T) {
-	for _, name := range []string{"cleanup-parser-written", "cleanup-validator-bogus", "cleanup-whole-transient", "cleanup-written-persistent", "manifest-api-old"} {
+	for _, name := range []string{"cleanup-parser-written", "cleanup-validator-bogus", "cleanup-whole-transient", "cleanup-written-persistent", "cleanup-auth-transient", "cleanup-auth-response-stream", "manifest-api-old"} {
 		t.Run(name, func(t *testing.T) {
 			cmd := exec.Command("go", "run", "./cmd/jcrpc-mutants", "--repo", "..", "--out", filepath.Join(t.TempDir(), "mutants"), "--only", name)
 			output, err := cmd.CombinedOutput()
@@ -47,25 +48,25 @@ func TestCleanupNarrowingMutants(t *testing.T) {
 	}
 }
 
-// Only whole-reply-area is accepted with persistent storage, even on non-stream schemas;
+// Only whole-reply-area or authenticated-invalidate is accepted with persistent storage, even on non-stream schemas;
 // an empty selector accepts all three released storage spellings. Programmatic
 // API callers receive the same verdict as parsed callers.
 func TestValidateStreamWorkspaceCleanup(t *testing.T) {
 	for _, storage := range []string{"", "transient", "persistent"} {
-		for _, mode := range []string{"", pluginapi.StreamWorkspaceCleanupWholeReplyArea, pluginapi.StreamWorkspaceCleanupWrittenBytesOnly, "bogus", "Written-bytes-only", " written-bytes-only "} {
+		for _, mode := range []string{"", pluginapi.StreamWorkspaceCleanupWholeReplyArea, StreamWorkspaceCleanupAuthenticatedInvalidate, "Authenticated-invalidate", pluginapi.StreamWorkspaceCleanupWrittenBytesOnly, "bogus", "Written-bytes-only", " written-bytes-only "} {
 			t.Run(storage+"/"+mode, func(t *testing.T) {
 				s := validSchema(t)
 				s.Applet.StreamWorkspace = storage
 				s.Applet.StreamWorkspaceCleanup = mode
 				errs := Validate(s)
-				known := mode == pluginapi.StreamWorkspaceCleanupWholeReplyArea
+				known := mode == pluginapi.StreamWorkspaceCleanupWholeReplyArea || mode == StreamWorkspaceCleanupAuthenticatedInvalidate
 				if mode == "" || known && storage == "persistent" {
 					if len(errs) != 0 {
 						t.Fatalf("valid cleanup refused: %v", errs)
 					}
 					return
 				}
-				message := "must be whole-reply-area"
+				message := "must be whole-reply-area or authenticated-invalidate"
 				if known {
 					message = "requires stream_workspace = persistent"
 				}
@@ -76,3 +77,49 @@ func TestValidateStreamWorkspaceCleanup(t *testing.T) {
 		}
 	}
 }
+
+// authenticated-invalidate refuses every streamed response by method path, on
+// the parsed schema and on the programmatic API alike; the same schema with
+// whole-reply-area and a request-only variant with the new selector are valid.
+func TestValidateAuthenticatedInvalidateRefusesStreamResponse(t *testing.T) {
+	input, err := os.ReadFile(filepath.Join("testdata", "stream.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	parse := func(mode, source string) []ValidationError {
+		s := mustParseSchema(t, strings.Replace(source, "[applet]", fmt.Sprintf("[applet]\nstream_workspace = \"persistent\"\nstream_workspace_cleanup = %q", mode), 1))
+		return Validate(s)
+	}
+	errs := parse(StreamWorkspaceCleanupAuthenticatedInvalidate, string(input))
+	if len(errs) != 2 {
+		t.Fatalf("stream response refusal count: %v", errs)
+	}
+	for _, method := range []string{"issueReport", "processPacket"} {
+		requireValidationError(t, errs, "methods."+method+".response", "stream response is not allowed")
+	}
+	if errs := parse(pluginapi.StreamWorkspaceCleanupWholeReplyArea, string(input)); len(errs) != 0 {
+		t.Fatalf("whole-reply-area control refused: %v", errs)
+	}
+	if errs := parse(StreamWorkspaceCleanupAuthenticatedInvalidate, authenticatedRequestOnlyTOML); len(errs) != 0 {
+		t.Fatalf("request-only control refused: %v", errs)
+	}
+}
+
+const authenticatedRequestOnlyTOML = `[applet]
+name = "AuthShape"
+version = "1.0.0"
+aid = "F00000010301"
+cla = 0xB0
+
+[methods.getVersion]
+ins = 0x01
+[methods.getVersion.response]
+fields = [{ name = "version", type = "u8" }]
+
+[methods.signTranscript]
+ins = 0x20
+[methods.signTranscript.request]
+fields = [{ name = "transcript", type = "stream", max_length = 2048, chunk_size = 192 }]
+[methods.signTranscript.response]
+fields = [{ name = "signatureLength", type = "u8" }, { name = "signature", type = "bytes[72]" }]
+`

@@ -141,7 +141,7 @@ func TestRunWholeCleanupMeasuredAuthIdentity(t *testing.T) {
 // backend generation needs the published target and is tested separately.
 func TestRunStreamWorkspaceCleanupValidation(t *testing.T) {
 	for _, storage := range []string{"omitted", "", "transient", "persistent"} {
-		for _, mode := range []string{"omitted", "", pluginapi.StreamWorkspaceCleanupWholeReplyArea, pluginapi.StreamWorkspaceCleanupWrittenBytesOnly, "bogus", "Written-bytes-only", " written-bytes-only "} {
+		for _, mode := range []string{"omitted", "", pluginapi.StreamWorkspaceCleanupWholeReplyArea, codegen.StreamWorkspaceCleanupAuthenticatedInvalidate, pluginapi.StreamWorkspaceCleanupWrittenBytesOnly, "bogus", "Written-bytes-only", " written-bytes-only "} {
 			t.Run(storage+"/"+mode, func(t *testing.T) {
 				input := cleanupInput(t, storage, mode)
 				out := filepath.Join(t.TempDir(), "out")
@@ -151,6 +151,11 @@ func TestRunStreamWorkspaceCleanupValidation(t *testing.T) {
 				if valid {
 					if code != exitCodeSuccess || stderr.Len() != 0 {
 						t.Fatalf("valid cleanup refused: %d %s", code, &stderr)
+					}
+				} else if storage == "persistent" && mode == codegen.StreamWorkspaceCleanupAuthenticatedInvalidate {
+					// The selector is admitted; the fixture's streamed responses are not.
+					if code != exitCodeValidation || strings.Contains(stderr.String(), "applet.stream_workspace_cleanup") || !strings.Contains(stderr.String(), "stream response is not allowed") {
+						t.Fatalf("authenticated selector verdict: %d %s", code, &stderr)
 					}
 				} else if code != exitCodeValidation || !strings.Contains(stderr.String(), "applet.stream_workspace_cleanup") {
 					t.Fatalf("cleanup validation refusal missing: %d %s", code, &stderr)
@@ -169,16 +174,20 @@ func TestRunStreamWorkspaceCleanupValidation(t *testing.T) {
 // generation control uses the same input and target selection.
 func TestRunStreamWorkspaceCleanupRefusals(t *testing.T) {
 	for _, tc := range []struct{ name, storage, mode, diagnostic string }{
-		{"unknown", "persistent", "bogus", "must be whole-reply-area"},
+		{"unknown", "persistent", "bogus", "must be whole-reply-area or authenticated-invalidate"},
 		{"whole-omitted", "omitted", pluginapi.StreamWorkspaceCleanupWholeReplyArea, "requires stream_workspace = persistent"},
 		{"whole-empty", "", pluginapi.StreamWorkspaceCleanupWholeReplyArea, "requires stream_workspace = persistent"},
 		{"whole-transient", "transient", pluginapi.StreamWorkspaceCleanupWholeReplyArea, "requires stream_workspace = persistent"},
-		{"written-persistent", "persistent", pluginapi.StreamWorkspaceCleanupWrittenBytesOnly, "must be whole-reply-area"},
-		{"written-omitted", "omitted", pluginapi.StreamWorkspaceCleanupWrittenBytesOnly, "must be whole-reply-area"},
-		{"written-empty", "", pluginapi.StreamWorkspaceCleanupWrittenBytesOnly, "must be whole-reply-area"},
-		{"written-transient", "transient", pluginapi.StreamWorkspaceCleanupWrittenBytesOnly, "must be whole-reply-area"},
-		{"whole-case", "persistent", "Whole-reply-area", "must be whole-reply-area"},
-		{"whole-whitespace", "persistent", " whole-reply-area ", "must be whole-reply-area"},
+		{"written-persistent", "persistent", pluginapi.StreamWorkspaceCleanupWrittenBytesOnly, "must be whole-reply-area or authenticated-invalidate"},
+		{"written-omitted", "omitted", pluginapi.StreamWorkspaceCleanupWrittenBytesOnly, "must be whole-reply-area or authenticated-invalidate"},
+		{"written-empty", "", pluginapi.StreamWorkspaceCleanupWrittenBytesOnly, "must be whole-reply-area or authenticated-invalidate"},
+		{"written-transient", "transient", pluginapi.StreamWorkspaceCleanupWrittenBytesOnly, "must be whole-reply-area or authenticated-invalidate"},
+		{"whole-case", "persistent", "Whole-reply-area", "must be whole-reply-area or authenticated-invalidate"},
+		{"whole-whitespace", "persistent", " whole-reply-area ", "must be whole-reply-area or authenticated-invalidate"},
+		{"auth-omitted", "omitted", codegen.StreamWorkspaceCleanupAuthenticatedInvalidate, "requires stream_workspace = persistent"},
+		{"auth-empty", "", codegen.StreamWorkspaceCleanupAuthenticatedInvalidate, "requires stream_workspace = persistent"},
+		{"auth-transient", "transient", codegen.StreamWorkspaceCleanupAuthenticatedInvalidate, "requires stream_workspace = persistent"},
+		{"auth-case", "persistent", "Authenticated-invalidate", "must be whole-reply-area or authenticated-invalidate"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, flags := range [][]string{{"--java", "probe", "--kotlin", "probe"}, {"--kotlin", "probe"}} {
@@ -296,6 +305,130 @@ func TestRunEmptyCleanupPreservesOutputs(t *testing.T) {
 					}
 				})
 			}
+		}
+	}
+}
+
+const authenticatedRequestOnlyTOML = `[applet]
+name = "AuthShape"
+version = "1.0.0"
+aid = "F00000010301"
+cla = 0xB0
+stream_workspace = "persistent"
+stream_workspace_cleanup = "authenticated-invalidate"
+
+[methods.getVersion]
+ins = 0x01
+[methods.getVersion.response]
+fields = [{ name = "version", type = "u8" }]
+
+[methods.signTranscript]
+ins = 0x20
+[methods.signTranscript.request]
+fields = [{ name = "transcript", type = "stream", max_length = 2048, chunk_size = 192 }]
+[methods.signTranscript.response]
+fields = [{ name = "signatureLength", type = "u8" }, { name = "signature", type = "bytes[72]" }]
+`
+
+// The composed CLI emits exactly the selected backend's authenticated-invalidate
+// package for both control-memory policies, and the authority flag is present
+// in the emitted dispatch entry. The Kotlin client is wire-identical to the
+// empty-selector control: the selector changes no APDU format.
+func TestRunAuthenticatedInvalidateGeneration(t *testing.T) {
+	if codegen.StreamWorkspaceCleanupAuthenticatedInvalidate != javacard.StreamWorkspaceCleanupAuthenticatedInvalidate {
+		t.Fatal("facade and backend selector strings differ")
+	}
+	for _, memory := range []string{"clear_on_deselect", "clear_on_reset"} {
+		t.Run(memory, func(t *testing.T) {
+			input := writeFile(t, t.TempDir(), "authshape.toml", authenticatedRequestOnlyTOML)
+			out := t.TempDir()
+			var stderr bytes.Buffer
+			args := []string{"--java", "probe", "--kotlin", "probe", "--stream-memory", memory, "--out-dir", out, input}
+			if code := run(args, &stderr); code != 0 {
+				t.Fatalf("authenticated-invalidate generation: %d %s", code, &stderr)
+			}
+			schema, err := codegen.ParseFile(input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			files, err := (javacard.Plugin{}).Generate(schema, pluginapi.Options{Namespace: "probe", StreamMemory: memory, SimulatorDependency: defaultSimulatorDependency})
+			if err != nil {
+				t.Fatal(err)
+			}
+			generated := cleanupFiles(t, filepath.Join(out, "authshape-server-javacard"))
+			if len(generated) != len(files) || len(files) == 0 {
+				t.Fatalf("package inventory: %d != %d", len(generated), len(files))
+			}
+			for _, file := range files {
+				if !bytes.Equal(generated[file.Name], file.Data) {
+					t.Fatalf("package differs: %s", file.Name)
+				}
+			}
+			skeleton := string(generated["src/main/java/probe/AuthShapeSkeleton.java"])
+			if !strings.Contains(skeleton, "short callerWorkspaceCapacity,\n            boolean authenticated) {") {
+				t.Fatal("authority flag missing from generated dispatchStreamTo")
+			}
+			control := t.TempDir()
+			args[len(args)-1] = writeFile(t, t.TempDir(), "authshape.toml", strings.Replace(authenticatedRequestOnlyTOML, "stream_workspace_cleanup = \"authenticated-invalidate\"\n", "", 1))
+			args[len(args)-2] = control
+			stderr.Reset()
+			if code := run(args, &stderr); code != 0 {
+				t.Fatalf("empty selector control: %d %s", code, &stderr)
+			}
+			selected, plain := cleanupFiles(t, filepath.Join(out, "authshape-client-kotlin")), cleanupFiles(t, filepath.Join(control, "authshape-client-kotlin"))
+			if len(selected) == 0 || len(selected) != len(plain) {
+				t.Fatal("Kotlin inventory differs")
+			}
+			for name, content := range plain {
+				if !bytes.Equal(content, selected[name]) {
+					t.Fatalf("Kotlin drift: %s", name)
+				}
+			}
+		})
+	}
+}
+
+// Streamed responses are refused at validation, by method path, before any
+// backend or filesystem write; the real Auth IDL names exactly its two
+// response-stream methods. Kotlin-only selection is refused the same way.
+func TestRunAuthenticatedInvalidateResponseStreamRefusal(t *testing.T) {
+	stream, err := os.ReadFile(filepath.Join("..", "..", "testdata", "stream.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	auth, err := os.ReadFile(filepath.Join("..", "..", "..", "compatibility", "inputs", "bsim-auth-2d23abd.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	selector := "[applet]\nstream_workspace = \"persistent\"\nstream_workspace_cleanup = \"authenticated-invalidate\""
+	for _, tc := range []struct {
+		name, input string
+		methods     []string
+	}{
+		{"stream", string(stream), []string{"issueReport", "processPacket"}},
+		{"auth", string(auth), []string{"buildProvisioningEnvelopeV3", "signAdmissionV1"}},
+	} {
+		for _, flags := range [][]string{{"--java", "probe", "--kotlin", "probe"}, {"--kotlin", "probe"}} {
+			t.Run(tc.name+"/"+flags[0], func(t *testing.T) {
+				input := writeFile(t, t.TempDir(), "in.toml", strings.Replace(tc.input, "[applet]", selector, 1))
+				out := filepath.Join(t.TempDir(), "fresh")
+				var stderr bytes.Buffer
+				code := run(append(append([]string{}, flags...), "--out-dir", out, input), &stderr)
+				if code != exitCodeValidation {
+					t.Fatalf("stream response refusal exit: %d %s", code, &stderr)
+				}
+				for _, method := range tc.methods {
+					if !strings.Contains(stderr.String(), "methods."+method+".response: stream response is not allowed") {
+						t.Fatalf("stream response refusal missing: %s\n%s", method, &stderr)
+					}
+				}
+				if strings.Count(stderr.String(), "stream response is not allowed") != len(tc.methods) {
+					t.Fatalf("refusal names a request-only method:\n%s", &stderr)
+				}
+				if _, err := os.Stat(out); !os.IsNotExist(err) {
+					t.Fatal("refusal created output")
+				}
+			})
 		}
 	}
 }

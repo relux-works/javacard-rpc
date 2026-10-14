@@ -48,12 +48,12 @@ func validateApplet(s *Schema, add func(path, msg string)) {
 	switch s.Applet.StreamWorkspaceCleanup {
 	case "":
 		// Unspecified cleanup preserves released transient and persistent output.
-	case pluginapi.StreamWorkspaceCleanupWholeReplyArea:
+	case pluginapi.StreamWorkspaceCleanupWholeReplyArea, StreamWorkspaceCleanupAuthenticatedInvalidate:
 		if s.Applet.StreamWorkspace != "persistent" {
 			add("applet.stream_workspace_cleanup", "requires stream_workspace = persistent")
 		}
 	default:
-		add("applet.stream_workspace_cleanup", "must be whole-reply-area")
+		add("applet.stream_workspace_cleanup", "must be whole-reply-area or authenticated-invalidate")
 	}
 	if strings.TrimSpace(s.Applet.Name) == "" {
 		add("applet.name", "must be non-empty")
@@ -112,6 +112,9 @@ func validateMethods(s *Schema, add func(path, msg string)) {
 
 		validateMessage(path+".request", m.Request, true, add)
 		validateMessage(path+".response", m.Response, false, add)
+		if s.Applet.StreamWorkspaceCleanup == StreamWorkspaceCleanupAuthenticatedInvalidate && m.Response != nil && m.Response.StreamField() != nil {
+			add(path+".response", "stream response is not allowed with stream_workspace_cleanup = authenticated-invalidate")
+		}
 		if m.HasStream() && (m.Response == nil || m.Response.StreamField() == nil) {
 			if length, fixed := fixedMessageLength(responseFields(m.Response)); fixed && length > 0xFF {
 				add(path+".response.fields", "fixed short response must fit in 255 bytes")
