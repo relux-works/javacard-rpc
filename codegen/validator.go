@@ -114,8 +114,8 @@ func validateMethods(s *Schema, add func(path, msg string)) {
 		validateMessage(path+".response", m.Response, false, add)
 		validateStreamMode(path, s.Applet, m, add)
 		if s.Applet.StreamWorkspaceCleanup == StreamWorkspaceCleanupAuthenticatedInvalidate && m.Response != nil && m.Response.StreamField() != nil &&
-			m.StreamMode != pluginapi.StreamModePublicInvalidate {
-			add(path+".response", "stream response is not allowed with stream_workspace_cleanup = authenticated-invalidate unless stream_mode = public-invalidate")
+			m.StreamMode == "" {
+			add(path+".response", "stream response is not allowed with stream_workspace_cleanup = authenticated-invalidate unless the method declares a stream_mode")
 		}
 		if m.HasStream() && (m.Response == nil || m.Response.StreamField() == nil) {
 			if length, fixed := fixedMessageLength(responseFields(m.Response)); fixed && length > 0xFF {

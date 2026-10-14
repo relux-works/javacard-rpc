@@ -39,7 +39,15 @@ fields = [{ name = "generation", type = "u32" }, { name = "digest", type = "byte
 
 [methods.signAdmission]
 ins = 0x70
+stream_mode = "chunked"
+
+[methods.buildEnvelope]
+ins = 0x10
 stream_mode = "public-invalidate"
+[methods.buildEnvelope.request]
+fields = [{ name = "bootstrap", type = "stream", max_length = 1792, chunk_size = 192 }]
+[methods.buildEnvelope.response]
+fields = [{ name = "envelope", type = "stream", max_length = 1792, chunk_size = 192 }]
 [methods.signAdmission.request]
 fields = [{ name = "transcript", type = "stream", max_length = 320, chunk_size = 192 }]
 [methods.signAdmission.response]
@@ -56,8 +64,8 @@ func TestParseStreamMode(t *testing.T) {
 			if s.Methods["signTranscript"].StreamMode != mode {
 				t.Fatalf("stream mode metadata lost: %q; want %q", s.Methods["signTranscript"].StreamMode, mode)
 			}
-			if s.Methods["putLeaf"].StreamMode != "" || s.Methods["signAdmission"].StreamMode != pluginapi.StreamModePublicInvalidate {
-				t.Fatalf("other methods changed: %q %q", s.Methods["putLeaf"].StreamMode, s.Methods["signAdmission"].StreamMode)
+			if s.Methods["putLeaf"].StreamMode != "" || s.Methods["buildEnvelope"].StreamMode != pluginapi.StreamModePublicInvalidate {
+				t.Fatalf("other methods changed: %q %q", s.Methods["putLeaf"].StreamMode, s.Methods["buildEnvelope"].StreamMode)
 			}
 		})
 	}
@@ -79,8 +87,8 @@ func TestValidateStreamMode(t *testing.T) {
 		{"ordinary", "ins = 0x01\n", "ins = 0x01\nstream_mode = \"chunked\"\n", "methods.getVersion.stream_mode", "applies only to a streamed method"},
 		{"whole-reply-area", `stream_workspace_cleanup = "authenticated-invalidate"`, `stream_workspace_cleanup = "whole-reply-area"`, "methods.signTranscript.stream_mode", "requires stream_workspace = persistent and stream_workspace_cleanup = authenticated-invalidate"},
 		{"released-default", "stream_workspace_cleanup = \"authenticated-invalidate\"\n", "", "methods.signAdmission.stream_mode", "requires stream_workspace = persistent and stream_workspace_cleanup = authenticated-invalidate"},
-		{"chunked-streamed-result", `stream_mode = "public-invalidate"`, `stream_mode = "chunked"`, "methods.signAdmission.stream_mode", "chunked supports short results only"},
-		{"authenticated-streamed-result", "stream_mode = \"public-invalidate\"\n", "", "methods.signAdmission.response", "stream response is not allowed"},
+		{"authenticated-streamed-result", "ins = 0x70\nstream_mode = \"chunked\"\n", "ins = 0x70\n", "methods.signAdmission.response", "stream response is not allowed"},
+		{"authenticated-public-result", "stream_mode = \"public-invalidate\"\n", "", "methods.buildEnvelope.response", "stream response is not allowed"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			input := strings.Replace(streamModeSchemaTOML, tc.from, tc.to, 1)
@@ -90,17 +98,19 @@ func TestValidateStreamMode(t *testing.T) {
 			requireValidationError(t, Validate(mustParseSchema(t, input)), tc.path, tc.message)
 		})
 	}
-	// A public method needs a request stream: a response-only public method is refused.
-	s := mustParseSchema(t, streamModeSchemaTOML)
-	s.Methods["signAdmission"].Request = nil
-	requireValidationError(t, Validate(s), "methods.signAdmission.stream_mode", "requires a request stream")
+	// Every mode needs a request stream: response-only chunked and public methods are refused.
+	for _, name := range []string{"signAdmission", "buildEnvelope"} {
+		s := mustParseSchema(t, streamModeSchemaTOML)
+		s.Methods[name].Request = nil
+		requireValidationError(t, Validate(s), "methods."+name+".stream_mode", "requires a request stream")
+	}
 }
 
 // Each facade stream-mode check keeps its guard and admits exactly one member
 // of the class it must refuse; jcrpc-mutants requires the named assertion
 // after the unmodified test passes, and refuses setup/compile failures as kills.
 func TestStreamModeNarrowingMutants(t *testing.T) {
-	for _, name := range []string{"mode-parser-drops-chunked", "mode-validator-unknown-bogus", "mode-validator-chunked-0x70", "mode-validator-whole-reply", "cleanup-auth-response-stream"} {
+	for _, name := range []string{"mode-parser-drops-chunked", "mode-validator-unknown-bogus", "mode-validator-request-0x70", "mode-validator-whole-reply", "cleanup-auth-response-stream"} {
 		t.Run(name, func(t *testing.T) {
 			cmd := exec.Command("go", "run", "./cmd/jcrpc-mutants", "--repo", "..", "--out", filepath.Join(t.TempDir(), "mutants"), "--only", name)
 			output, err := cmd.CombinedOutput()

@@ -13,8 +13,9 @@ import (
 )
 
 // authWithModesTOML returns the pinned Auth IDL with the REV4 per-method modes:
-// public provisioning and admission, chunked signatures, issuer methods on the
-// authenticated contract. cleanup is the applet selector to write.
+// public provisioning (0x10 only), chunked signatures and admission
+// (0x20/0x30/0x40/0x70), issuer methods on the authenticated contract. cleanup
+// is the applet selector to write.
 func authWithModesTOML(t *testing.T, cleanup string, modes bool) string {
 	t.Helper()
 	auth, err := os.ReadFile(filepath.Join("..", "..", "..", "compatibility", "inputs", "bsim-auth-2d23abd.toml"))
@@ -26,7 +27,7 @@ func authWithModesTOML(t *testing.T, cleanup string, modes bool) string {
 		return source
 	}
 	for ins, mode := range map[string]string{
-		"0x10": pluginapi.StreamModePublicInvalidate, "0x70": pluginapi.StreamModePublicInvalidate,
+		"0x10": pluginapi.StreamModePublicInvalidate, "0x70": pluginapi.StreamModeChunked,
 		"0x20": pluginapi.StreamModeChunked, "0x30": pluginapi.StreamModeChunked, "0x40": pluginapi.StreamModeChunked,
 	} {
 		line := "\nins = " + ins + "\n"
@@ -46,7 +47,7 @@ func TestRunStreamModeValidation(t *testing.T) {
 		name, from, to, want string
 	}{
 		{"unknown", "ins = 0x20\nstream_mode = \"chunked\"", "ins = 0x20\nstream_mode = \"bogus\"", "methods.signAuthenticationChallengeV1.stream_mode: must be public-invalidate or chunked"},
-		{"chunked-streamed-result", "ins = 0x70\nstream_mode = \"public-invalidate\"", "ins = 0x70\nstream_mode = \"chunked\"", "methods.signAdmissionV1.stream_mode: chunked supports short results only"},
+		{"response-only", "[methods.signAdmissionV1.request]\nfields = [\n  { name = \"admissionTranscript\", type = \"stream\", max_length = 320, chunk_size = 192 }\n]\n", "", "methods.signAdmissionV1.stream_mode: requires a request stream"},
 		{"whole-reply-area", "stream_workspace_cleanup = \"authenticated-invalidate\"", "stream_workspace_cleanup = \"whole-reply-area\"", "methods.buildProvisioningEnvelopeV3.stream_mode: requires stream_workspace = persistent and stream_workspace_cleanup = authenticated-invalidate"},
 		{"ordinary-method", "ins = 0x01\n", "ins = 0x01\nstream_mode = \"chunked\"\n", "methods.getAuthenticationIdentity.stream_mode: applies only to a streamed method"},
 		{"authenticated-streamed-result", "ins = 0x10\nstream_mode = \"public-invalidate\"", "ins = 0x10", "methods.buildProvisioningEnvelopeV3.response: stream response is not allowed"},
@@ -112,11 +113,13 @@ func TestRunStreamModeAuthGeneration(t *testing.T) {
 			}
 			skeleton := string(generated["src/main/java/probe/BSimAuthSkeleton.java"])
 			// INS order: 0x10 public, 0x20/0x30/0x40 chunked, 0x50/0x58 authenticated,
-			// 0x70 public, 0x80/0x88 authenticated.
+			// 0x70 chunked, 0x80/0x88 authenticated.
 			for _, want := range []string{
-				"    private static final byte[] STREAM_MODES = {\n        (byte) 1, (byte) 2, (byte) 2, (byte) 2,\n        (byte) 0, (byte) 0, (byte) 1, (byte) 0,\n        (byte) 0 };\n",
+				"    private static final byte[] STREAM_MODES = {\n        (byte) 1, (byte) 2, (byte) 2, (byte) 2,\n        (byte) 0, (byte) 0, (byte) 2, (byte) 0,\n        (byte) 0 };\n",
 				"protected abstract void onSignAuthenticationChallengeV1Chunk(",
-				"protected abstract short onSignAdmissionV1Prepare(",
+				"protected abstract void onSignAdmissionV1Chunk(",
+				"protected abstract short onSignAdmissionV1Prepare(\n            short inputLength,",
+				"protected abstract short onBuildProvisioningEnvelopeV3Prepare(\n            byte[] input,",
 				"protected abstract short onPutCertSimV1Stream(",
 			} {
 				if !strings.Contains(skeleton, want) {

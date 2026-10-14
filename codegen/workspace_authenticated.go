@@ -10,9 +10,8 @@ import "github.com/relux-works/javacard-rpc/pluginapi"
 const StreamWorkspaceCleanupAuthenticatedInvalidate = "authenticated-invalidate"
 
 // validateStreamMode checks the per-method stream_mode. A mode is meaningful
-// only inside the authenticated-invalidate runtime, only for a method with a
-// request stream, and chunked delivery only for a short result. Unknown or
-// misplaced modes are refused, never ignored.
+// only inside the authenticated-invalidate runtime and only for a method with a
+// request stream. Unknown or misplaced modes are refused, never ignored.
 func validateStreamMode(path string, applet Applet, m *Method, add func(path, msg string)) {
 	if m.StreamMode == "" {
 		return
@@ -34,9 +33,5 @@ func validateStreamMode(path string, applet Applet, m *Method, add func(path, ms
 	}
 	if m.Request.StreamField() == nil {
 		add(path, "requires a request stream")
-		return
-	}
-	if m.StreamMode == pluginapi.StreamModeChunked && m.Response != nil && m.Response.StreamField() != nil {
-		add(path, "chunked supports short results only; a stream response needs public-invalidate")
 	}
 }

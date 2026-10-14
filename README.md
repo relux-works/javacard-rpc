@@ -150,12 +150,16 @@ stream_mode = "chunked"            # zero NVM: chunks go to the handler as they 
 
 [methods.signAdmissionV1]
 ins = 0x70
-stream_mode = "public-invalidate"  # no authentication; streamed result produced into RAM
+stream_mode = "chunked"            # zero NVM; signature + evidence produced into RAM on each read
+
+[methods.buildProvisioningEnvelopeV3]
+ins = 0x10
+stream_mode = "public-invalidate"  # no authentication; staged upload, result produced into RAM
 ```
 
 `"chunked"` delivers each accepted chunk to the handler and a running digest,
-so no APDU of that method writes persistent memory; it supports short results
-only. `"public-invalidate"` admits unauthenticated APDUs, stages accepted chunks
+so no APDU of that method writes persistent memory; a streamed result is
+produced into RAM on each read from handler-held state. `"public-invalidate"` admits unauthenticated APDUs, stages accepted chunks
 and writes nothing persistent on any refused APDU; a streamed result is produced
 into the admitted RAM response span for the digest and on every read, never
 stored. A method without a mode keeps the authenticated contract, and an

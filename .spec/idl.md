@@ -64,7 +64,7 @@ Method fields:
 |---|---|---|---|
 | `ins` | integer | yes | Byte range `0x00..0xFF`; unique across methods; reserved ranges forbidden. A streamed method reserves this value plus the next five values. |
 | `description` | string | no | Free text. |
-| `stream_mode` | string | no | Per-method stream contract, `"public-invalidate"` or `"chunked"` (see 5.2.1). Only for a streamed method with a request stream, only with `stream_workspace = "persistent"` and `stream_workspace_cleanup = "authenticated-invalidate"`; `"chunked"` only with a short result. Omission keeps the applet policy. Unknown values are rejected. |
+| `stream_mode` | string | no | Per-method stream contract, `"public-invalidate"` or `"chunked"` (see 5.2.1). Only for a streamed method with a request stream, only with `stream_workspace = "persistent"` and `stream_workspace_cleanup = "authenticated-invalidate"`. Omission keeps the applet policy. Unknown values are rejected. |
 | `[methods.<name>.request]` | table | no | Request message definition. |
 | `[methods.<name>.response]` | table | no | Response message definition. |
 
@@ -246,7 +246,7 @@ has no streamed methods or only a client target is selected.
 | Selector | Request and handler access | Terminal cleanup |
 | --- | --- | --- |
 | `whole-reply-area` | Track successful request writes exactly; handler retains raw byte-array input/reply access and may write its authorized reply area | Wipe the authorized reply area once a handler ran, plus tracked request writes; untouched workspace is not wiped |
-| `authenticated-invalidate` | Only APDUs the applet marks authenticated (trailing `boolean authenticated` on `dispatchStreamTo` and `processIfStream`) may stage request bytes; others are refused `6982` before any effect. Handler input is the read-only workspace; short output is the caller response span. CLOSE_WRITE admits the response span and caller workspace only when each is a transient array or the current APDU buffer, otherwise `6985` before the handler runs. Streamed responses are refused at validation unless the method declares `stream_mode = "public-invalidate"` (5.2.1) | None: every refused authenticated APDU (foreign method included), ABORT, deselect, CLOSE and reset invalidate transient state only; the unauthenticated `6982` refusal keeps the session; the accepted short result is copied once as the retry receipt. Retained public bytes are not erased |
+| `authenticated-invalidate` | Only APDUs the applet marks authenticated (trailing `boolean authenticated` on `dispatchStreamTo` and `processIfStream`) may stage request bytes; others are refused `6982` before any effect. Handler input is the read-only workspace; short output is the caller response span. CLOSE_WRITE admits the response span and caller workspace only when each is a transient array or the current APDU buffer, otherwise `6985` before the handler runs. Streamed responses are refused at validation unless the method declares a `stream_mode` (5.2.1) | None: every refused authenticated APDU (foreign method included), ABORT, deselect, CLOSE and reset invalidate transient state only; the unauthenticated `6982` refusal keeps the session; the accepted short result is copied once as the retry receipt. Retained public bytes are not erased |
 | Omitted or empty | Released buffer-handler API, including old persistent schemas | Released full-workspace cleanup |
 
 Whole mode keeps the existing generated buffer-handler signatures and in-place
@@ -329,12 +329,14 @@ Inside `authenticated-invalidate`, a streamed method may declare
 | --- | --- | --- | --- | --- |
 | omitted | required per APDU | staged in the persistent workspace | short | accepted chunks and the accepted receipt only |
 | `public-invalidate` | not required | staged in the persistent workspace | short, or streamed: the handler prepares it at CLOSE_WRITE and produces each chunk into the admitted RAM response span for the digest and on every READ_CHUNK; it is never stored | accepted chunks (and a short receipt) only; every refused APDU writes nothing and invalidates the stream |
-| `chunked` | not required | never staged: each chunk goes to the handler and a running digest | short, written into the admitted RAM response span | none on any APDU; repeated chunks and CLOSE retries after success are refused |
+| `chunked` | not required | never staged: each chunk goes to the handler and a running digest | short, written into the admitted RAM response span, or streamed: produced into it from handler-held state on every read, never stored | none on any APDU; repeated chunks and CLOSE retries after success are refused |
 
 An unauthenticated APDU of any method is refused `6982`, without touching the
 session, while an authenticated upload is live. The generated JavaCard
-skeleton declares `on<Method>Chunk`/`on<Method>Finish` for chunked methods and
-`on<Method>Prepare`/`on<Method>Produce` for public streamed results. The APDU
+skeleton declares `on<Method>Chunk` plus `on<Method>Finish` (short result) or
+`on<Method>Prepare(inputLength)`/`on<Method>Produce(resultOffset, ...)` (streamed
+result) for chunked methods, and `on<Method>Prepare`/`on<Method>Produce` over
+the staged input for public streamed results. The APDU
 format and the Kotlin client are unchanged. Contract, measurements and limits:
 the target repository's `STREAM-MODES.md`.
 
