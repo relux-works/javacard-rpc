@@ -132,9 +132,11 @@ old persistent schemas. See [the selector contract](.spec/idl.md#52-bulk-workspa
 `"authenticated-invalidate"` (JavaCard target v0.6.0) adds a trailing
 `boolean authenticated` to the generated `dispatchStreamTo` and adapter
 `processIfStream`: an unauthenticated stream APDU is refused `6982` before any
-session or persistent effect, every refusal, ABORT, deselect, CLOSE and reset
-invalidates transient state only, and short results are staged in the caller
-response span. Streamed responses are refused at validation by method path. The
+session or persistent effect, every authenticated refusal (foreign method
+included), ABORT, deselect, CLOSE and reset invalidates transient state only,
+and short results are staged in the caller response span. CLOSE_WRITE admits
+that span and the caller workspace only when each is a transient array or the
+current APDU buffer; any other array is refused `6985` before the handler runs. Streamed responses are refused at validation by method path. The
 APDU format and the Kotlin/Swift clients are unchanged. Contract and evidence:
 the target repository's `AUTHENTICATED-INVALIDATE.md`.
 
@@ -152,7 +154,7 @@ reference, digest scratch, adapter I/O, exception status and a one-byte reset
 marker remain transient. Uploads, handler output and explicit wiping now write
 NVM and consume its endurance. Abort, deselect, protocol failure and closing a
 read explicitly wipe the workspace. Nonterminal class/foreign-method refusals
-preserve the owner's session. Reset invalidates the session immediately,
+preserve the owner's session (not under `authenticated-invalidate`). Reset invalidates the session immediately,
 but persistent bytes remain until the next stream dispatch wipes them before
 reuse or a stale-session refusal. Wiping is not transactional: power loss can
 leave residual bytes until a subsequent dispatch retries cleanup. This option

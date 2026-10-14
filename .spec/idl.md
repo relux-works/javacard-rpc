@@ -220,7 +220,8 @@ retained workspace bytes are overwritten on the next stream dispatch before
 reuse or stale-session rejection. Explicit abort, applet deselect, first
 successful read close and terminal validation failure overwrite the full
 workspace. Class rejection and foreign-method refusal preserve a live owner's
-session. Persistent scalar metadata is never used. Cryptographic purpose
+session, except under `authenticated-invalidate` (5.2), where every refused
+authenticated APDU, foreign method included, invalidates it. Persistent scalar metadata is never used. Cryptographic purpose
 and authorization remain properties of the typed method implementation; a
 stream field does not authorize generic signing or decryption.
 
@@ -244,7 +245,7 @@ has no streamed methods or only a client target is selected.
 | Selector | Request and handler access | Terminal cleanup |
 | --- | --- | --- |
 | `whole-reply-area` | Track successful request writes exactly; handler retains raw byte-array input/reply access and may write its authorized reply area | Wipe the authorized reply area once a handler ran, plus tracked request writes; untouched workspace is not wiped |
-| `authenticated-invalidate` | Only APDUs the applet marks authenticated (trailing `boolean authenticated` on `dispatchStreamTo` and `processIfStream`) may stage request bytes; others are refused `6982` before any effect. Handler input is the read-only workspace; short output is the caller response span. Streamed responses are refused at validation | None: refusal, ABORT, deselect, CLOSE and reset invalidate transient state only; the accepted short result is copied once as the retry receipt. Retained public bytes are not erased |
+| `authenticated-invalidate` | Only APDUs the applet marks authenticated (trailing `boolean authenticated` on `dispatchStreamTo` and `processIfStream`) may stage request bytes; others are refused `6982` before any effect. Handler input is the read-only workspace; short output is the caller response span. CLOSE_WRITE admits the response span and caller workspace only when each is a transient array or the current APDU buffer, otherwise `6985` before the handler runs. Streamed responses are refused at validation | None: every refused authenticated APDU (foreign method included), ABORT, deselect, CLOSE and reset invalidate transient state only; the unauthenticated `6982` refusal keeps the session; the accepted short result is copied once as the retry receipt. Retained public bytes are not erased |
 | Omitted or empty | Released buffer-handler API, including old persistent schemas | Released full-workspace cleanup |
 
 Whole mode keeps the existing generated buffer-handler signatures and in-place

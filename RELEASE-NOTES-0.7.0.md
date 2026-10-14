@@ -9,14 +9,16 @@ message now lists both accepted values.
 
 Generated JavaCard sources come from the target's new selector: the stream
 dispatch entries take a trailing `boolean authenticated`, unauthenticated stream
-APDUs are refused `6982` before any effect, and refusals never write the
-persistent workspace. See the target's `AUTHENTICATED-INVALIDATE.md`. The APDU
+APDUs are refused `6982` before any effect, refusals never write the
+persistent workspace, every refused authenticated APDU (foreign method
+included) invalidates the session, and CLOSE_WRITE admits only a transient or
+current-APDU response span and caller workspace. See the target's `AUTHENTICATED-INVALIDATE.md`. The APDU
 format and the Kotlin and Swift clients are unchanged.
 
 ## Release dependency
 
 This candidate pins the JavaCard target by the pseudo-version of its candidate
-head (`v0.5.1-0.20261014155439-511b8ba480e5`). Before landing, the target must
+head (`v0.5.1-0.20261014165507-d27f2ca088c7`). Before landing, the target must
 be independently reviewed, landed and tagged `v0.6.0` with a signed tag; then
 `codegen/go.mod`, `compatibility/releases/javacard.json`,
 `compatibility/runtime-manifest.json` and the CI workflow pins move to that tag.

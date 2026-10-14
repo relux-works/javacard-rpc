@@ -6,7 +6,7 @@ github.com/relux-works/javacard-rpc-client-swift v0.2.2 h1:ZBOusKFkcBiHCsRk2Y+Ze
 github.com/relux-works/javacard-rpc-client-swift v0.2.2/go.mod h1:9/fS7xJMP43xcJ7dtaaFJrS0ehE02u6lT7nwr2YSsfE=
 github.com/relux-works/javacard-rpc-server-javacard v0.5.0 h1:gzkUw3pYQzjupDx/sjsfJG1D4+nfZmT4xFcFshUwt3c=
 github.com/relux-works/javacard-rpc-server-javacard v0.5.0/go.mod h1:S4iGoPfsidhqSQ3Kap/TCJDIyON8/wIMCPkvjGtZ1M8=
-github.com/relux-works/javacard-rpc-server-javacard v0.5.1-0.20261014155439-511b8ba480e5 h1:qR50jfxH3iYeOSWML6Do2E6bMRCIr61f++GpfrOn5kA=
-github.com/relux-works/javacard-rpc-server-javacard v0.5.1-0.20261014155439-511b8ba480e5/go.mod h1:S4iGoPfsidhqSQ3Kap/TCJDIyON8/wIMCPkvjGtZ1M8=
+github.com/relux-works/javacard-rpc-server-javacard v0.5.1-0.20261014165507-d27f2ca088c7 h1:1+MsdlfKLzFLAjmSDXFA0LX2IjGzf48mE8oAqM5LhOQ=
+github.com/relux-works/javacard-rpc-server-javacard v0.5.1-0.20261014165507-d27f2ca088c7/go.mod h1:S4iGoPfsidhqSQ3Kap/TCJDIyON8/wIMCPkvjGtZ1M8=
 github.com/relux-works/javacard-rpc/pluginapi v0.1.1 h1:cNvoCdRTp88tLTIli+zk391jspJZRtBgdTMzLGmqPa0=
 github.com/relux-works/javacard-rpc/pluginapi v0.1.1/go.mod h1:vini/jA9xID/u2iYwtKViPacEvP9nLIapL3RdQV7RBc=
