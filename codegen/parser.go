@@ -33,6 +33,7 @@ type rawApplet struct {
 type rawMethod struct {
 	INS         int64       `toml:"ins" json:"ins"`
 	Description string      `toml:"description" json:"description"`
+	StreamMode  string      `toml:"stream_mode" json:"stream_mode"`
 	Request     *rawMessage `toml:"request" json:"request"`
 	Response    *rawMessage `toml:"response" json:"response"`
 }
@@ -125,6 +126,7 @@ func normalizeSchema(raw rawSchema) (*Schema, error) {
 			Name:        name,
 			INS:         ins,
 			Description: rm.Description,
+			StreamMode:  rm.StreamMode,
 		}
 
 		if rm.Request != nil {

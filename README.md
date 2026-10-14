@@ -140,6 +140,29 @@ current APDU buffer; any other array is refused `6985` before the handler runs. 
 APDU format and the Kotlin/Swift clients are unchanged. Contract and evidence:
 the target repository's `AUTHENTICATED-INVALIDATE.md`.
 
+Inside `"authenticated-invalidate"` a streamed method may declare a per-method
+`stream_mode` (pluginapi v0.1.2):
+
+```toml
+[methods.signAuthenticationChallengeV1]
+ins = 0x20
+stream_mode = "chunked"            # zero NVM: chunks go to the handler as they arrive
+
+[methods.signAdmissionV1]
+ins = 0x70
+stream_mode = "public-invalidate"  # no authentication; streamed result produced into RAM
+```
+
+`"chunked"` delivers each accepted chunk to the handler and a running digest,
+so no APDU of that method writes persistent memory; it supports short results
+only. `"public-invalidate"` admits unauthenticated APDUs, stages accepted chunks
+and writes nothing persistent on any refused APDU; a streamed result is produced
+into the admitted RAM response span for the digest and on every read, never
+stored. A method without a mode keeps the authenticated contract, and an
+unauthenticated APDU cannot cancel or join a live authenticated upload. See
+[the IDL rules](.spec/idl.md#521-per-method-stream-modes) and the target
+repository's `STREAM-MODES.md`.
+
 The historical real Auth comparison rejected `written-bytes-only`: its SDK
 bridge required 2048 B of transient staging, adding 2060 B of attributed RAM
 and 1912 B of CAP compared with whole mode. Whole-mode counters measure
