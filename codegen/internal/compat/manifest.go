@@ -12,8 +12,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 )
+
+// A release tag is a plain semantic version; pseudo-versions and prereleases are
+// candidate identities, never signed release receipts.
+var releaseTag = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
 
 type Target struct {
 	Target            string `json:"target"`
@@ -66,8 +71,8 @@ func Check(repo, manifest string) (Manifest, error) {
 	if m.Schema != 1 || len(m.Targets) != 3 {
 		return m, fmt.Errorf("manifest must contain exactly three targets, schema 1")
 	}
-	if m.FacadeVersion != "0.6.0" {
-		return m, fmt.Errorf("facade release version must be 0.6.0")
+	if m.FacadeVersion != "0.7.0" {
+		return m, fmt.Errorf("facade release version must be 0.7.0")
 	}
 	seen := map[string]bool{}
 	for _, p := range m.Targets {
@@ -89,6 +94,9 @@ func Check(repo, manifest string) (Manifest, error) {
 		}
 		if p.Tag != p.BackendVersion {
 			return m, fmt.Errorf("backend/runtime version disagreement: %s", p.Target)
+		}
+		if !releaseTag.MatchString(p.Tag) {
+			return m, fmt.Errorf("release tag is not a plain semantic version: %s", p.Target)
 		}
 	}
 	cmd := exec.Command("go", "list", "-m", "-json", "all")
@@ -122,8 +130,8 @@ func Check(repo, manifest string) (Manifest, error) {
 		}
 	}
 	q := modules["github.com/relux-works/javacard-rpc/pluginapi"]
-	if q.Version != "v0.1.1" || q.Replace != nil {
-		return m, fmt.Errorf("pluginapi must resolve released v0.1.1 without replace")
+	if q.Version != "v0.1.2" || q.Replace != nil {
+		return m, fmt.Errorf("pluginapi must resolve released v0.1.2 without replace")
 	}
 	want := Input{"compatibility/inputs/bsim-auth-2d23abd.toml", "2d23abdafa1e0f68c6003ab56274b2ac38378ef9", "1be1ed52ac9a85a62d5c5e371a9e22d38f834282681528476ca071e7bfc2cb66"}
 	if m.BSimInput != want {

@@ -36,7 +36,7 @@ func TestManifestRefusals(t *testing.T) {
 		"duplicate":              func(m *compat.Manifest) { m.Targets[1] = m.Targets[0] },
 		"unknown":                func(m *compat.Manifest) { m.Targets[1].Target = "other" },
 		"schema":                 func(m *compat.Manifest) { m.Schema = 2 },
-		"old-facade-version":     func(m *compat.Manifest) { m.FacadeVersion = "0.5.0" },
+		"old-facade-version":     func(m *compat.Manifest) { m.FacadeVersion = "0.6.0" },
 		"missing-facade-version": func(m *compat.Manifest) { m.FacadeVersion = "" },
 		"input-drift":            func(m *compat.Manifest) { m.BSimInput.SHA256 = strings.Repeat("0", 64) },
 	}
@@ -131,73 +131,100 @@ func TestManifestBackendDisagreement(t *testing.T) {
 	}
 }
 
-// The production compatibility CLI requires the published compatible API and
-// refuses the obsolete API or a local replacement; the exact public graph is
-// accepted before either bounded change is planted in the copied configuration.
+// Historical and candidate module identities used only by copied fixtures. The
+// signed v0.5.0 backend requires API v0.1.1; the candidate pseudo-versions name
+// the commits that were later tagged pluginapi/v0.1.2 and backend v0.6.0.
+const (
+	historicalAPISums     = "github.com/relux-works/javacard-rpc/pluginapi v0.1.1 h1:cNvoCdRTp88tLTIli+zk391jspJZRtBgdTMzLGmqPa0=\ngithub.com/relux-works/javacard-rpc/pluginapi v0.1.1/go.mod h1:vini/jA9xID/u2iYwtKViPacEvP9nLIapL3RdQV7RBc=\n"
+	historicalBackendSums = "github.com/relux-works/javacard-rpc-server-javacard v0.5.0 h1:gzkUw3pYQzjupDx/sjsfJG1D4+nfZmT4xFcFshUwt3c=\ngithub.com/relux-works/javacard-rpc-server-javacard v0.5.0/go.mod h1:S4iGoPfsidhqSQ3Kap/TCJDIyON8/wIMCPkvjGtZ1M8=\n"
+	candidateAPI          = "v0.1.2-0.20261014223732-4e10e2cfd254"
+	candidateAPISums      = "github.com/relux-works/javacard-rpc/pluginapi " + candidateAPI + " h1:H4lp/V3q34HDvIid0xZNghs/7P3VaVvZ3fNVUHhoohs=\ngithub.com/relux-works/javacard-rpc/pluginapi " + candidateAPI + "/go.mod h1:vini/jA9xID/u2iYwtKViPacEvP9nLIapL3RdQV7RBc=\n"
+	candidateBackend      = "v0.5.1-0.20261014224032-50f13333ded2"
+	candidateBackendSums  = "github.com/relux-works/javacard-rpc-server-javacard " + candidateBackend + " h1:vEP2FHDJw0lfOEgKbS06ZWAVIJADsZZ9IVbB+KRwRjg=\ngithub.com/relux-works/javacard-rpc-server-javacard " + candidateBackend + "/go.mod h1:oorIx1weagWRaRsvIfPNei0UR9Yzt5C/iQfHuHBamrQ=\n"
+)
+
+// copyCompatConfig copies only the configuration Check reads, so the resolver
+// runs against the real public graph without local sources.
+func copyCompatConfig(t *testing.T, repo string) string {
+	t.Helper()
+	root := t.TempDir()
+	for _, name := range []string{"codegen/go.mod", "codegen/go.sum", "compatibility/runtime-manifest.json", "compatibility/inputs/bsim-auth-2d23abd.toml", "compatibility/releases/javacard.json", "compatibility/releases/kotlin.json", "compatibility/releases/swift.json"} {
+		b, err := os.ReadFile(filepath.Join(repo, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := write(filepath.Join(root, name), string(b)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return root
+}
+
+// editFile applies exact byte replacements and appends extra bytes; a missing
+// anchor fails the fixture instead of silently testing the unchanged tuple.
+func editFile(t *testing.T, path string, pairs [][2]string, extra string) {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, pair := range pairs {
+		if !bytes.Contains(b, []byte(pair[0])) {
+			t.Fatalf("fixture anchor %q missing in %s", pair[0], path)
+		}
+		b = bytes.ReplaceAll(b, []byte(pair[0]), []byte(pair[1]))
+	}
+	if err := os.WriteFile(path, append(b, []byte(extra)...), 0644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// historicalJavaCard pins the authentic signed backend v0.5.0 tuple in go.mod,
+// the manifest and its receipt, so Check passes every backend guard.
+func historicalJavaCard(t *testing.T, root string) {
+	t.Helper()
+	editFile(t, filepath.Join(root, "codegen/go.mod"), [][2]string{{"javacard-rpc-server-javacard v0.6.0", "javacard-rpc-server-javacard v0.5.0"}}, "")
+	for _, name := range []string{"compatibility/runtime-manifest.json", "compatibility/releases/javacard.json"} {
+		editFile(t, filepath.Join(root, name), [][2]string{{"v0.6.0", "v0.5.0"}, {"javacard:0.6.0", "javacard:0.5.0"}, {"46fa6ecb45135be0ba9b1d4b9cd9aa8663718510", "96bf35555bba8a040eba880622629ff0f25b2556"}, {"b43b8d6d2834f57d2a1e899b99fe22996e2709ee", "9bbf1db745834f3efefb54846f26bec6310f8c22"}}, "")
+	}
+}
+
+// The production compatibility CLI requires the released API v0.1.2 and refuses
+// the previous release, the candidate pseudo-version of the same commit, or a
+// local replacement; the exact public graph is accepted before each bounded
+// change is planted in the copied configuration. Lowering only the direct
+// requirement is a positive MVS control: backend v0.6.0 still selects v0.1.2.
 func TestManifestAPIRefusals(t *testing.T) {
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, kind := range []string{"obsolete", "lower-direct-require", "replace"} {
+	for _, kind := range []string{"obsolete", "pseudo", "lower-direct-require", "replace"} {
 		t.Run(kind, func(t *testing.T) {
-			root := t.TempDir()
-			for _, name := range []string{"codegen/go.mod", "codegen/go.sum", "compatibility/runtime-manifest.json", "compatibility/inputs/bsim-auth-2d23abd.toml", "compatibility/releases/javacard.json", "compatibility/releases/kotlin.json", "compatibility/releases/swift.json"} {
-				b, err := os.ReadFile(filepath.Join(repo, name))
-				if err != nil {
-					t.Fatal(err)
-				}
-				if err := write(filepath.Join(root, name), string(b)); err != nil {
-					t.Fatal(err)
-				}
-			}
+			root := copyCompatConfig(t, repo)
 			if code := run([]string{"--repo", root}); code != 0 {
 				t.Fatalf("public API control refused: %d", code)
 			}
 			mod := filepath.Join(root, "codegen/go.mod")
-			b, err := os.ReadFile(mod)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if kind == "obsolete" || kind == "lower-direct-require" {
-				b = bytes.Replace(b, []byte("github.com/relux-works/javacard-rpc/pluginapi v0.1.1"), []byte("github.com/relux-works/javacard-rpc/pluginapi v0.1.0"), 1)
-				if kind == "obsolete" {
-					// v0.5.0 transitively requires API v0.1.1. Only the real
-					// historical backend tuple can select the obsolete API;
-					// lowering a direct require alone is an accepted MVS control.
-					b = bytes.Replace(b, []byte("javacard-rpc-server-javacard v0.5.0"), []byte("javacard-rpc-server-javacard v0.3.0"), 1)
-					for _, name := range []string{"compatibility/runtime-manifest.json", "compatibility/releases/javacard.json"} {
-						raw, err := os.ReadFile(filepath.Join(root, name))
-						if err != nil {
-							t.Fatal(err)
-						}
-						for _, pair := range [][2]string{{"v0.5.0", "v0.3.0"}, {"javacard:0.5.0", "javacard:0.3.0"}, {"96bf35555bba8a040eba880622629ff0f25b2556", "0a41fc2cd30f0b1e0871a0e2ff74583a8c04128c"}, {"9bbf1db745834f3efefb54846f26bec6310f8c22", "e6d02397fc94a771c2e2ac9f27f43a2ea7c5a0de"}} {
-							raw = bytes.ReplaceAll(raw, []byte(pair[0]), []byte(pair[1]))
-						}
-						if err := os.WriteFile(filepath.Join(root, name), raw, 0644); err != nil {
-							t.Fatal(err)
-						}
-					}
-				}
-				// Signed v0.4.6's API checksums keep this a semantic refusal test,
-				// rather than an unrelated missing-sum resolver failure.
-				sumPath := filepath.Join(root, "codegen/go.sum")
-				sums, err := os.ReadFile(sumPath)
-				if err != nil {
-					t.Fatal(err)
-				}
-				sums = append(sums, []byte("github.com/relux-works/javacard-rpc/pluginapi v0.1.0 h1:SNT1MS/IcEzv84sJKwDGnP2j0QH8rexMpLNpOSAIlbI=\ngithub.com/relux-works/javacard-rpc/pluginapi v0.1.0/go.mod h1:vini/jA9xID/u2iYwtKViPacEvP9nLIapL3RdQV7RBc=\n")...)
-				if kind == "obsolete" {
-					sums = append(sums, []byte("github.com/relux-works/javacard-rpc-server-javacard v0.3.0 h1:PHDnUvoqNlUw8bqwqOodldlESy8jDu0BKCcn1lztlF4=\ngithub.com/relux-works/javacard-rpc-server-javacard v0.3.0/go.mod h1:bzncCYOWYLhEIUxldV1QDD1UzNuClA0fOchbBz3Ml+E=\n")...)
-				}
-				if err := os.WriteFile(sumPath, sums, 0644); err != nil {
-					t.Fatal(err)
-				}
-			} else {
-				b = append(b, []byte("\nreplace github.com/relux-works/javacard-rpc/pluginapi => "+filepath.Join(repo, "pluginapi")+"\n")...)
-			}
-			if err := os.WriteFile(mod, b, 0644); err != nil {
-				t.Fatal(err)
+			sum := filepath.Join(root, "codegen/go.sum")
+			switch kind {
+			case "obsolete":
+				// Only the real historical backend tuple can select the
+				// previous API; both are signed public releases.
+				historicalJavaCard(t, root)
+				editFile(t, mod, [][2]string{{"javacard-rpc/pluginapi v0.1.2", "javacard-rpc/pluginapi v0.1.1"}}, "")
+				editFile(t, sum, nil, historicalAPISums+historicalBackendSums)
+			case "pseudo":
+				// The historical backend lets MVS keep the candidate
+				// pseudo-version, which sorts below released v0.1.2.
+				historicalJavaCard(t, root)
+				editFile(t, mod, [][2]string{{"javacard-rpc/pluginapi v0.1.2", "javacard-rpc/pluginapi " + candidateAPI}}, "")
+				editFile(t, sum, nil, historicalAPISums+historicalBackendSums+candidateAPISums)
+			case "lower-direct-require":
+				editFile(t, mod, [][2]string{{"javacard-rpc/pluginapi v0.1.2", "javacard-rpc/pluginapi v0.1.1"}}, "")
+				editFile(t, sum, nil, historicalAPISums)
+			case "replace":
+				editFile(t, mod, nil, "\nreplace github.com/relux-works/javacard-rpc/pluginapi => "+filepath.Join(repo, "pluginapi")+"\n")
 			}
 			if kind == "lower-direct-require" {
 				// Resolve the edited fixture graph with Go's normal module update;
@@ -206,7 +233,7 @@ func TestManifestAPIRefusals(t *testing.T) {
 				cmd.Dir = filepath.Join(root, "codegen")
 				cmd.Env = append(os.Environ(), "GOWORK=off", "GOPROXY=off", "GOSUMDB=off")
 				selected, err := cmd.CombinedOutput()
-				if err != nil || !strings.Contains(string(selected), "github.com/relux-works/javacard-rpc/pluginapi v0.1.1\n") {
+				if err != nil || !strings.Contains(string(selected), "github.com/relux-works/javacard-rpc/pluginapi v0.1.2\n") {
 					t.Fatalf("MVS selected %q: %v", selected, err)
 				}
 				if code := run([]string{"--repo", root}); code != 0 {
@@ -218,8 +245,44 @@ func TestManifestAPIRefusals(t *testing.T) {
 				t.Fatalf("%s API accepted: %d", kind, code)
 			}
 			_, err = compat.Check(root, filepath.Join(root, "compatibility/runtime-manifest.json"))
-			if err == nil || err.Error() != "pluginapi must resolve released v0.1.1 without replace" {
+			if err == nil || err.Error() != "pluginapi must resolve released v0.1.2 without replace" {
 				t.Fatalf("wrong API refusal: %v", err)
+			}
+		})
+	}
+}
+
+// The candidate backend pseudo-version is refused through the production CLI
+// whether the receipts keep the signed v0.6.0 identity (graph disagreement) or
+// are rewritten to claim the pseudo-version itself (not a release tag). The
+// unchanged copied released tuple is the positive control.
+func TestManifestCandidatePseudoVersionRefusals(t *testing.T) {
+	repo, err := filepath.Abs("../../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for kind, want := range map[string]string{
+		"graph":   "backend module disagreement: javacard",
+		"claimed": "release tag is not a plain semantic version: javacard",
+	} {
+		t.Run(kind, func(t *testing.T) {
+			root := copyCompatConfig(t, repo)
+			if code := run([]string{"--repo", root}); code != 0 {
+				t.Fatalf("released tuple control refused: %d", code)
+			}
+			editFile(t, filepath.Join(root, "codegen/go.mod"), [][2]string{{"javacard-rpc-server-javacard v0.6.0", "javacard-rpc-server-javacard " + candidateBackend}}, "")
+			editFile(t, filepath.Join(root, "codegen/go.sum"), nil, candidateBackendSums+candidateAPISums)
+			if kind == "claimed" {
+				for _, name := range []string{"compatibility/runtime-manifest.json", "compatibility/releases/javacard.json"} {
+					editFile(t, filepath.Join(root, name), [][2]string{{"v0.6.0", candidateBackend}}, "")
+				}
+			}
+			if code := run([]string{"--repo", root}); code != 1 {
+				t.Fatalf("candidate backend accepted: %s exit %d", kind, code)
+			}
+			_, err := compat.Check(root, filepath.Join(root, "compatibility/runtime-manifest.json"))
+			if err == nil || err.Error() != want {
+				t.Fatalf("wrong candidate refusal: %v", err)
 			}
 		})
 	}

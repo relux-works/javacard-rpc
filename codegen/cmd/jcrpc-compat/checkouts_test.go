@@ -82,3 +82,65 @@ func TestPinnedCheckoutSourceRefusals(t *testing.T) {
 		}
 	}
 }
+
+// The real signed v0.6.0 checkout is refused before any native build when the
+// manifest and its receipt agree on the authentic previous v0.5.0 tag object or
+// commit: Check admits the consistent pair, so only the checkout identity gate
+// can refuse it. The unchanged released identity is the positive control.
+func TestPinnedCheckoutIdentityRefusals(t *testing.T) {
+	prepared := os.Getenv("JCRPC_COMPAT_ROOT")
+	if prepared == "" {
+		t.Skip("set JCRPC_COMPAT_ROOT to bootstrapped runtime checkouts")
+	}
+	repo, e := filepath.Abs("../../..")
+	if e != nil {
+		t.Fatal(e)
+	}
+	m, e := compat.Check(repo, filepath.Join(repo, "compatibility/runtime-manifest.json"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	var released compat.Target
+	for _, p := range m.Targets {
+		if p.Target == "javacard" {
+			released = p
+		}
+	}
+	dir := filepath.Join(prepared, "runtimes", filepath.Base(released.GoModule))
+	if e = compat.VerifyCheckout(repo, dir, released); e != nil {
+		t.Fatalf("released checkout refused: %v", e)
+	}
+	for kind, pair := range map[string][2]string{
+		"previous-tag-object": {released.TagObject, "9bbf1db745834f3efefb54846f26bec6310f8c22"},
+		"previous-commit":     {released.Commit, "96bf35555bba8a040eba880622629ff0f25b2556"},
+	} {
+		t.Run(kind, func(t *testing.T) {
+			fixture := copyCompatConfig(t, repo)
+			keys, e := os.ReadFile(filepath.Join(repo, "compatibility/allowed_signers"))
+			if e != nil {
+				t.Fatal(e)
+			}
+			if e = write(filepath.Join(fixture, "compatibility/allowed_signers"), string(keys)); e != nil {
+				t.Fatal(e)
+			}
+			for _, name := range []string{"compatibility/runtime-manifest.json", "compatibility/releases/javacard.json"} {
+				editFile(t, filepath.Join(fixture, name), [][2]string{pair}, "")
+			}
+			planted, e := compat.Check(fixture, filepath.Join(fixture, "compatibility/runtime-manifest.json"))
+			if e != nil {
+				t.Fatalf("consistent planted receipt refused before checkout: %v", e)
+			}
+			for _, p := range planted.Targets {
+				if p.Target == "javacard" {
+					// The refused ref depends on map order for the commit case.
+					if e = compat.VerifyCheckout(fixture, dir, p); e == nil || !strings.HasPrefix(e.Error(), "checkout identity disagreement javacard: ") {
+						t.Fatalf("previous identity admitted or wrong refusal: %v", e)
+					}
+				}
+			}
+			if got := run([]string{"--repo", fixture, "--root", prepared, "--mode", "jvm"}); got != 1 {
+				t.Fatalf("native launch admitted previous identity: %d", got)
+			}
+		})
+	}
+}

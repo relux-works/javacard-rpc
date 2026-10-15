@@ -2,12 +2,13 @@
 
 `runtime-manifest.json` records the canonical repository, signed annotated tag,
 peeled commit, backend module/version/import and unchanged native identity for
-Java Card v0.5.0, Kotlin v0.3.0 and Swift v0.2.2. `releases/*.json` transcribe the
+Java Card v0.6.0, Kotlin v0.3.0 and Swift v0.2.2. `releases/*.json` transcribe the
 reviewed release receipts supplied to this integration. `allowed_signers` contains
 only the two public signing keys used by those receipts. Bootstrap verifies the
 actual tag object, peeled commit, checkout HEAD and signature, then refuses tracked
 source changes before every native build. Go's resolved graph must use those
-versions and pluginapi v0.1.1 without replacements.
+versions and pluginapi v0.1.2 without replacements, and every manifest tag must
+be a plain release version (no pseudo-version or prerelease).
 
 The immutable B6 fixture is `inputs/bsim-auth-2d23abd.toml`, copied from bsimId main
 commit `2d23abdafa1e0f68c6003ab56274b2ac38378ef9`, SHA-256
@@ -53,17 +54,21 @@ bytes; 190/177 need larger caller/transport capacity. Trusted handlers have no
 sandbox/rollback guarantee. Optional-int and physical capacity remain deployment
 inputs; target simulator/CAP evidence is not migrated-consumer qualification.
 
-Before offline Go properties, both CI jobs also cache the public historical
-modules used by `TestManifestAPIRefusals` and the `manifest-api-old` narrowing
-mutant. From the repository root, after the production `go mod download`, run:
+Before offline Go properties, both CI jobs also cache the public historical and
+candidate modules used by `TestManifestAPIRefusals`,
+`TestManifestCandidatePseudoVersionRefusals` and the `manifest-api-old`,
+`manifest-api-pseudo` and `manifest-release-tag-pseudo` narrowing mutants. From
+the repository root, after the production `go mod download`, run:
 
 ```sh
-go -C codegen mod download github.com/relux-works/javacard-rpc/pluginapi@v0.1.0 github.com/relux-works/javacard-rpc-server-javacard@v0.3.0
+go -C codegen mod download github.com/relux-works/javacard-rpc/pluginapi@v0.1.1 github.com/relux-works/javacard-rpc/pluginapi@v0.1.2-0.20261014223732-4e10e2cfd254 github.com/relux-works/javacard-rpc-server-javacard@v0.5.0 github.com/relux-works/javacard-rpc-server-javacard@v0.5.1-0.20261014224032-50f13333ded2
 ```
 
 These are test-fixture cache inputs, not production requirements or replacements.
-They let the historical tuple reach the exact obsolete-API refusal offline;
-lowering only the direct API requirement still selects v0.1.1 through full MVS.
+The signed v0.5.0 backend tuple lets the fixture reach the exact previous-API and
+pseudo-API refusals offline; the candidate backend pseudo-version reaches the
+graph and release-tag refusals. Lowering only the direct API requirement still
+selects v0.1.2 through full MVS.
 
 ## Ordinary prepared builds (network denied)
 
@@ -108,7 +113,7 @@ includeBuild('/absolute/generated/counter-server-javacard')
 Keep the runtime checkouts at native roots. The historical generated Kotlin
 manifest still names runtime `0.2.0` for byte parity; the root substitution selects
 the manifest's verified Kotlin v0.3.0 checkout for every included project. The
-Java Card substitution selects the signed v0.5.0 runtime, including when a
+Java Card substitution selects the signed v0.6.0 runtime, including when a
 generated ecosystem coordinate retains its historical version for byte parity. Consumers pin
 only the facade and use its runtime manifest; they do not independently guess
 compatible runtime versions or edit generated Gradle files.

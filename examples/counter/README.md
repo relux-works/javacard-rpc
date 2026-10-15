@@ -21,7 +21,7 @@ It also ships two host-side executables against the same bridge and applet:
 
 The generated directory is intentionally gitignored. Recreate it with `make generate`.
 
-The Java Card v0.5.0 backend uses ordinary `dispatchTo` and caller-owned output
+The Java Card v0.6.0 backend uses ordinary `dispatchTo` and caller-owned output
 spans. `CounterJCApplet.process` captures headers, receives every supported short
 input fragment into the APDU buffer, and sends only the successful produced span.
 Byte/packed callbacks write directly; byte inputs are borrowed span triples.

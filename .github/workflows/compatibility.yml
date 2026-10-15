@@ -22,7 +22,7 @@ jobs:
         working-directory: codegen
         run: |
           go mod download
-          go mod download github.com/relux-works/javacard-rpc/pluginapi@v0.1.0 github.com/relux-works/javacard-rpc-server-javacard@v0.3.0
+          go mod download github.com/relux-works/javacard-rpc/pluginapi@v0.1.1 github.com/relux-works/javacard-rpc/pluginapi@v0.1.2-0.20261014223732-4e10e2cfd254 github.com/relux-works/javacard-rpc-server-javacard@v0.5.0 github.com/relux-works/javacard-rpc-server-javacard@v0.5.1-0.20261014224032-50f13333ded2
           go mod verify
           go build -o ../.temp/jcrpc-compat ./cmd/jcrpc-compat
           go build -o ../.temp/jcrpc-gen ./cmd/jcrpc-gen
@@ -74,7 +74,7 @@ jobs:
           xcodebuild -version
           cd codegen
           go mod download
-          go mod download github.com/relux-works/javacard-rpc/pluginapi@v0.1.0 github.com/relux-works/javacard-rpc-server-javacard@v0.3.0
+          go mod download github.com/relux-works/javacard-rpc/pluginapi@v0.1.1 github.com/relux-works/javacard-rpc/pluginapi@v0.1.2-0.20261014223732-4e10e2cfd254 github.com/relux-works/javacard-rpc-server-javacard@v0.5.0 github.com/relux-works/javacard-rpc-server-javacard@v0.5.1-0.20261014224032-50f13333ded2
           go build -o ../.temp/jcrpc-compat ./cmd/jcrpc-compat
           cd ..
           .temp/jcrpc-compat --repo . --mode bootstrap --root .temp/consumer
