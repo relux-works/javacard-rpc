@@ -13,7 +13,7 @@ repositories {
 
 which made `--simulator-dependency` unusable for a consumer pinned to a fork
 that is only available via `./gradlew publishToMavenLocal` and never pushed to
-Maven Central — for example `bsimId` on `works.relux:jcardsim:3.0.5.9-relux.2`.
+Maven Central — for example `a downstream consumer` on `works.relux:jcardsim:3.0.5.9-relux.2`.
 Passing `--simulator-dependency works.relux:jcardsim:3.0.5.9-relux.2` produced
 a generated build that could not resolve the artefact without hand-editing the
 generated output, which contradicts the "never edit generated output" contract

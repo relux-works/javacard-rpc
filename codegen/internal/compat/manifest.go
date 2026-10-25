@@ -34,15 +34,15 @@ type Target struct {
 	SwiftExactVersion string `json:"swift_exact_version,omitempty"`
 }
 type Input struct {
-	Path   string `json:"path"`
-	Commit string `json:"commit"`
-	SHA256 string `json:"sha256"`
+	Path     string `json:"path"`
+	Revision string `json:"revision"`
+	SHA256   string `json:"sha256"`
 }
 type Manifest struct {
 	Schema        int      `json:"schema"`
 	FacadeVersion string   `json:"facade_version"`
 	Targets       []Target `json:"targets"`
-	BSimInput     Input    `json:"bsim_input"`
+	SampleInput   Input    `json:"sample_input"`
 }
 
 func readJSON(path string, v any) error {
@@ -133,17 +133,17 @@ func Check(repo, manifest string) (Manifest, error) {
 	if q.Version != "v0.1.2" || q.Replace != nil {
 		return m, fmt.Errorf("pluginapi must resolve released v0.1.2 without replace")
 	}
-	want := Input{"compatibility/inputs/bsim-auth-2d23abd.toml", "2d23abdafa1e0f68c6003ab56274b2ac38378ef9", "1be1ed52ac9a85a62d5c5e371a9e22d38f834282681528476ca071e7bfc2cb66"}
-	if m.BSimInput != want {
-		return m, fmt.Errorf("bsim input identity disagreement")
+	want := Input{"compatibility/inputs/sample-store.toml", "sample-store-v1", "46729b4e03cc71d6997de286c2361271a1c281fbc7839556c79de031a2b63847"}
+	if m.SampleInput != want {
+		return m, fmt.Errorf("sample input identity disagreement")
 	}
-	b, e = os.ReadFile(filepath.Join(repo, m.BSimInput.Path))
+	b, e = os.ReadFile(filepath.Join(repo, m.SampleInput.Path))
 	if e != nil {
 		return m, e
 	}
 	hash := sha256.Sum256(b)
-	if hex.EncodeToString(hash[:]) != m.BSimInput.SHA256 {
-		return m, fmt.Errorf("bsim input digest disagreement")
+	if hex.EncodeToString(hash[:]) != m.SampleInput.SHA256 {
+		return m, fmt.Errorf("sample input digest disagreement")
 	}
 	return m, nil
 }

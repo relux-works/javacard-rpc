@@ -106,20 +106,20 @@ func TestValidateAuthenticatedInvalidateRefusesStreamResponse(t *testing.T) {
 }
 
 const authenticatedRequestOnlyTOML = `[applet]
-name = "AuthShape"
+name = "BatchStore"
 version = "1.0.0"
-aid = "F00000010301"
-cla = 0xB0
+aid = "F05566000101"
+cla = 0xC0
 
-[methods.getVersion]
-ins = 0x01
-[methods.getVersion.response]
+[methods.readState]
+ins = 0x03
+[methods.readState.response]
 fields = [{ name = "version", type = "u8" }]
 
-[methods.signTranscript]
-ins = 0x20
-[methods.signTranscript.request]
-fields = [{ name = "transcript", type = "stream", max_length = 2048, chunk_size = 192 }]
-[methods.signTranscript.response]
-fields = [{ name = "signatureLength", type = "u8" }, { name = "signature", type = "bytes[72]" }]
+[methods.summarizeBatch]
+ins = 0x40
+[methods.summarizeBatch.request]
+fields = [{ name = "packet", type = "stream", max_length = 1537, chunk_size = 128 }]
+[methods.summarizeBatch.response]
+fields = [{ name = "prefix", type = "bytes[21]" }, { name = "recordCount", type = "u32" }, { name = "format", type = "u16" }, { name = "state", type = "u8" }, { name = "accepted", type = "bool" }]
 `

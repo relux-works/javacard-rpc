@@ -1,0 +1,75 @@
+# Independent, synthetic storage example for generator compatibility checks.
+# Record sizes deliberately exercise ordinary-output boundaries; streamed pages
+# exercise upload and bidirectional transfer without an application protocol.
+
+[applet]
+name = "SampleStore"
+description = "Synthetic bounded record and page storage interface"
+version = "1.0.0"
+aid = "F053544F524501"
+cla = 0xB2
+
+[methods.readRecord]
+ins = 0x03
+[methods.readRecord.response]
+fields = [
+  { name = "payload", type = "bytes[120]" },
+  { name = "sequence", type = "u32" },
+  { name = "used", type = "u16" },
+  { name = "flags", type = "u8" }
+]
+
+[methods.readStatistics]
+ins = 0x04
+[methods.readStatistics.response]
+fields = [
+  { name = "recordCount", type = "u32" },
+  { name = "pageCount", type = "u32" },
+  { name = "revision", type = "u32" },
+  { name = "flags", type = "u8" }
+]
+
+[methods.exchangePages]
+ins = 0x12
+[methods.exchangePages.request]
+fields = [
+  { name = "pages", type = "stream", max_length = 1536, chunk_size = 128 }
+]
+[methods.exchangePages.response]
+fields = [
+  { name = "pages", type = "stream", max_length = 1024, chunk_size = 128 }
+]
+
+[methods.appendPages]
+ins = 0x22
+[methods.appendPages.request]
+fields = [
+  { name = "pages", type = "stream", max_length = 768, chunk_size = 128 }
+]
+[methods.appendPages.response]
+fields = [{ name = "pageCount", type = "u32" }]
+
+[methods.summarizePages]
+ins = 0x32
+[methods.summarizePages.request]
+fields = [
+  { name = "pages", type = "stream", max_length = 1024, chunk_size = 128 }
+]
+[methods.summarizePages.response]
+fields = [{ name = "summary", type = "bytes[16]" }]
+
+[methods.enumeratePages]
+ins = 0x42
+[methods.enumeratePages.request]
+fields = [
+  { name = "selection", type = "stream", max_length = 256, chunk_size = 128 }
+]
+[methods.enumeratePages.response]
+fields = [
+  { name = "pages", type = "stream", max_length = 512, chunk_size = 128 }
+]
+
+[status_words]
+SW_INVALID_LENGTH = { code = 0x6700, description = "Invalid record or page length" }
+SW_WRONG_STATE = { code = 0x6985, description = "Page transfer is not active" }
+SW_INVALID_DATA = { code = 0x6A80, description = "Invalid record or page data" }

@@ -38,7 +38,7 @@ func TestManifestRefusals(t *testing.T) {
 		"schema":                 func(m *compat.Manifest) { m.Schema = 2 },
 		"old-facade-version":     func(m *compat.Manifest) { m.FacadeVersion = "0.6.0" },
 		"missing-facade-version": func(m *compat.Manifest) { m.FacadeVersion = "" },
-		"input-drift":            func(m *compat.Manifest) { m.BSimInput.SHA256 = strings.Repeat("0", 64) },
+		"input-drift":            func(m *compat.Manifest) { m.SampleInput.SHA256 = strings.Repeat("0", 64) },
 	}
 	for _, field := range []string{"repository", "tag", "tag_object", "commit", "go_module", "backend_version", "backend_import", "runtime", "swift_package", "swift_exact_version"} {
 		field := field
@@ -95,7 +95,7 @@ func TestManifestBackendDisagreement(t *testing.T) {
 	for _, kind := range []string{"version", "replace"} {
 		t.Run(kind, func(t *testing.T) {
 			root := t.TempDir()
-			for _, name := range []string{"codegen/go.mod", "codegen/go.sum", "compatibility/runtime-manifest.json", "compatibility/inputs/bsim-auth-2d23abd.toml", "compatibility/releases/javacard.json", "compatibility/releases/kotlin.json", "compatibility/releases/swift.json"} {
+			for _, name := range []string{"codegen/go.mod", "codegen/go.sum", "compatibility/runtime-manifest.json", "compatibility/inputs/sample-store.toml", "compatibility/releases/javacard.json", "compatibility/releases/kotlin.json", "compatibility/releases/swift.json"} {
 				b, e := os.ReadFile(filepath.Join(repo, name))
 				if e != nil {
 					t.Fatal(e)
@@ -148,7 +148,7 @@ const (
 func copyCompatConfig(t *testing.T, repo string) string {
 	t.Helper()
 	root := t.TempDir()
-	for _, name := range []string{"codegen/go.mod", "codegen/go.sum", "compatibility/runtime-manifest.json", "compatibility/inputs/bsim-auth-2d23abd.toml", "compatibility/releases/javacard.json", "compatibility/releases/kotlin.json", "compatibility/releases/swift.json"} {
+	for _, name := range []string{"codegen/go.mod", "codegen/go.sum", "compatibility/runtime-manifest.json", "compatibility/inputs/sample-store.toml", "compatibility/releases/javacard.json", "compatibility/releases/kotlin.json", "compatibility/releases/swift.json"} {
 		b, err := os.ReadFile(filepath.Join(repo, name))
 		if err != nil {
 			t.Fatal(err)
@@ -289,14 +289,14 @@ func TestManifestCandidatePseudoVersionRefusals(t *testing.T) {
 }
 
 // Altering the pinned schema bytes while retaining its approved identity must
-// refuse through the public runner; the unchanged copied fixture is accepted.
+// refuse through the public runner; the unchanged synthetic fixture is accepted.
 func TestPinnedInputDigestRefusal(t *testing.T) {
 	repo, e := filepath.Abs("../../..")
 	if e != nil {
 		t.Fatal(e)
 	}
 	root := t.TempDir()
-	for _, name := range []string{"codegen/go.mod", "codegen/go.sum", "compatibility/runtime-manifest.json", "compatibility/inputs/bsim-auth-2d23abd.toml", "compatibility/releases/javacard.json", "compatibility/releases/kotlin.json", "compatibility/releases/swift.json"} {
+	for _, name := range []string{"codegen/go.mod", "codegen/go.sum", "compatibility/runtime-manifest.json", "compatibility/inputs/sample-store.toml", "compatibility/releases/javacard.json", "compatibility/releases/kotlin.json", "compatibility/releases/swift.json"} {
 		b, e := os.ReadFile(filepath.Join(repo, name))
 		if e != nil {
 			t.Fatal(e)
@@ -306,9 +306,9 @@ func TestPinnedInputDigestRefusal(t *testing.T) {
 		}
 	}
 	if got := run([]string{"--repo", root}); got != 0 {
-		t.Fatalf("valid copied pins refused: %d", got)
+		t.Fatalf("valid synthetic pins refused: %d", got)
 	}
-	p := filepath.Join(root, "compatibility/inputs/bsim-auth-2d23abd.toml")
+	p := filepath.Join(root, "compatibility/inputs/sample-store.toml")
 	b, e := os.ReadFile(p)
 	if e != nil {
 		t.Fatal(e)
@@ -317,7 +317,7 @@ func TestPinnedInputDigestRefusal(t *testing.T) {
 		t.Fatal(e)
 	}
 	_, e = compat.Check(root, filepath.Join(root, "compatibility/runtime-manifest.json"))
-	if e == nil || !strings.Contains(e.Error(), "bsim input digest disagreement") {
+	if e == nil || !strings.Contains(e.Error(), "sample input digest disagreement") {
 		t.Fatalf("pinned input drift admitted or wrong refusal: %v", e)
 	}
 	if got := run([]string{"--repo", root}); got != 1 {

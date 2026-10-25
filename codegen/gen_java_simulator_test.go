@@ -114,15 +114,15 @@ func runRealJavaResult(t *testing.T, jar string, r *JavaGenerationResult, fixtur
 	return string(output), e
 }
 
-// Measure actual arrays reachable from the generated bsim-auth skeleton and
+// Measure actual arrays reachable from the generated sample-store skeleton and
 // adapter after real simulator installation, including static dispatch tables
 // and all status arrays. Byte/short payload is exact; reference slots have no
 // claimed physical width. Provider/JCRE objects and object headers are excluded.
-func TestBSimAuthGeneratedAllocationPayload(t *testing.T) {
+func TestSampleStoreGeneratedAllocationPayload(t *testing.T) {
 	jar := simulatorJar(t)
 	idl := os.Getenv("JCRPC_ALLOCATION_IDL")
 	if idl == "" {
-		t.Skip("set JCRPC_ALLOCATION_IDL to the read-only bsim-auth IDL")
+		idl = "../compatibility/inputs/sample-store.toml"
 	}
 	s, e := ParseFile(idl)
 	if e != nil {
@@ -134,9 +134,9 @@ func TestBSimAuthGeneratedAllocationPayload(t *testing.T) {
 			if policy == "baseline" {
 				dir := os.Getenv("JCRPC_ALLOCATION_BASELINE")
 				if dir == "" {
-					t.Fatal("JCRPC_ALLOCATION_BASELINE required")
+					t.Skip("set JCRPC_ALLOCATION_BASELINE for independent historical allocation comparison")
 				}
-				r = &JavaGenerationResult{TransportName: "BSimAuthTransport", SkeletonName: "BSimAuthSkeleton", StreamEndpointName: "BSimAuthStreamEndpoint", StreamRuntimeName: "BSimAuthBoundedStreamRuntime", StreamAPDUAdapterName: "BSimAuthStreamAPDUAdapter"}
+				r = &JavaGenerationResult{TransportName: "SampleStoreTransport", SkeletonName: "SampleStoreSkeleton", StreamEndpointName: "SampleStoreStreamEndpoint", StreamRuntimeName: "SampleStoreBoundedStreamRuntime", StreamAPDUAdapterName: "SampleStoreStreamAPDUAdapter"}
 				for name, target := range map[string]*[]byte{r.TransportName: &r.TransportSource, r.SkeletonName: &r.SkeletonSource, r.StreamEndpointName: &r.StreamEndpointSource, r.StreamRuntimeName: &r.StreamRuntimeSource, r.StreamAPDUAdapterName: &r.StreamAPDUAdapterSource} {
 					b, e := os.ReadFile(filepath.Join(dir, name+".java"))
 					if e != nil {
@@ -146,7 +146,7 @@ func TestBSimAuthGeneratedAllocationPayload(t *testing.T) {
 				}
 			} else {
 				s.Applet.StreamWorkspace = policy
-				r, e = GenerateJavaSkeleton(s, "io.jcrpc.bsim")
+				r, e = GenerateJavaSkeleton(s, "io.jcrpc.store")
 				if e != nil {
 					t.Fatal(e)
 				}
@@ -175,10 +175,10 @@ func TestBSimAuthGeneratedAllocationPayload(t *testing.T) {
 				}
 			}
 			// Independent inventory: scratch 32 + scalars 17*2 + three status
-			// words 3*2 + adapter 255 = 327; tables 9+9+45*2 = 108.
-			transient, persistent, arrays := workspace+327, 108, 12
+			// words 3*2 + adapter 255 = 327; four stream rows need 4+4+20*2 = 48.
+			transient, persistent, arrays := workspace+327, 48, 12
 			if policy == "persistent" {
-				transient, persistent, arrays = 328, 108+workspace, 13
+				transient, persistent, arrays = 328, 48+workspace, 13
 			}
 			want := fmt.Sprintf("TOTAL transient primitive payload=%d B; transient reference slots=1; persistent primitive payload=%d B; persistent reference slots=0; arrays=%d", transient, persistent, arrays)
 			if !strings.Contains(output, want) {
@@ -189,22 +189,22 @@ func TestBSimAuthGeneratedAllocationPayload(t *testing.T) {
 	}
 }
 
-const allocationApplet = `package io.jcrpc.bsim;
+const allocationApplet = `package io.jcrpc.store;
 import javacard.framework.*;
 public final class AllocationApplet extends Applet {
  static AllocationApplet installed;
- final Logic logic=new Logic();final BSimAuthStreamAPDUAdapter adapter=new BSimAuthStreamAPDUAdapter(logic);
+ final Logic logic=new Logic();final SampleStoreStreamAPDUAdapter adapter=new SampleStoreStreamAPDUAdapter(logic);
  public static void install(byte[] b,short o,byte l){new AllocationApplet().register();}
  AllocationApplet(){installed=this;}
  public void process(APDU apdu){if(selectingApplet())return;adapter.processIfStream(apdu);}
  public void deselect(){adapter.deselect();}
- static final class Logic extends BSimAuthSkeleton {
+ static final class Logic extends SampleStoreSkeleton {
   Logic(){super(null);}
   METHODS
  }
 }
 `
-const allocationHarness = `package io.jcrpc.bsim;
+const allocationHarness = `package io.jcrpc.store;
 import java.lang.reflect.*;
 import java.util.*;
 import javacard.framework.*;
@@ -213,7 +213,7 @@ public class AllocationHarness {
  static final Set<Object> seen=Collections.newSetFromMap(new IdentityHashMap<Object,Boolean>());
  static int transientBytes,persistentBytes,transientSlots,persistentSlots,arrayCount;
  public static void main(String[] args)throws Exception{
-  Simulator simulator=new Simulator();AID aid=new AID(new byte[]{(byte)0xF0,0,0,0,0x20,1},(short)0,(byte)6);
+  Simulator simulator=new Simulator();AID aid=new AID(new byte[]{(byte)0xF0,0x53,0x54,0x4F,0x52,0x45,1},(short)0,(byte)7);
   simulator.installApplet(aid,AllocationApplet.class);simulator.selectApplet(aid);
   walk(AllocationApplet.installed.logic,"skeleton");walk(AllocationApplet.installed.adapter,"adapter");
   System.out.println("TOTAL transient primitive payload="+transientBytes+" B; transient reference slots="+transientSlots+"; persistent primitive payload="+persistentBytes+" B; persistent reference slots="+persistentSlots+"; arrays="+arrayCount);
@@ -232,7 +232,7 @@ public class AllocationHarness {
    System.out.println(path+": "+(transientArray?"transient":"persistent")+" "+component.getName()+"["+n+"] payload="+bytes+" B slots="+slots);
    return;
   }
-  while(c!=null && c.getName().startsWith("io.jcrpc.bsim.")){
+  while(c!=null && c.getName().startsWith("io.jcrpc.store.")){
    for(Field f:c.getDeclaredFields()){if(f.getType().isPrimitive())continue;f.setAccessible(true);walk(f.get(Modifier.isStatic(f.getModifiers())?null:x),path+"."+f.getName());}c=c.getSuperclass();
   }
  }
@@ -245,8 +245,8 @@ public class AllocationHarness {
 func TestAllocationInstrumentRejectsNarrowingPlant(t *testing.T) {
 	jar := simulatorJar(t)
 	s := workspaceSchema(t, "persistent")
-	s.Applet.Name = "BSimAuth"
-	r, e := GenerateJavaSkeleton(s, "io.jcrpc.bsim")
+	s.Applet.Name = "SampleStore"
+	r, e := GenerateJavaSkeleton(s, "io.jcrpc.store")
 	if e != nil {
 		t.Fatal(e)
 	}

@@ -10,7 +10,7 @@ import (
 )
 
 const streamModeSchemaTOML = `[applet]
-name = "Rev4Shape"
+name = "ModeStore"
 version = "1.0.0"
 aid = "F00000010401"
 cla = 0xB0
@@ -22,36 +22,36 @@ ins = 0x01
 [methods.getVersion.response]
 fields = [{ name = "version", type = "u8" }]
 
-[methods.signTranscript]
-ins = 0x20
+[methods.inspectOffsets]
+ins = 0x23
 stream_mode = "chunked"
-[methods.signTranscript.request]
-fields = [{ name = "transcript", type = "stream", max_length = 2048, chunk_size = 192 }]
-[methods.signTranscript.response]
-fields = [{ name = "signatureLength", type = "u8" }, { name = "signature", type = "bytes[72]" }]
+[methods.inspectOffsets.request]
+fields = [{ name = "offsets", type = "stream", max_length = 1024, chunk_size = 192 }]
+[methods.inspectOffsets.response]
+fields = [{ name = "wordCount", type = "u16" }, { name = "cursor", type = "u16" }, { name = "wordXor", type = "u16" }]
 
-[methods.putLeaf]
-ins = 0x58
-[methods.putLeaf.request]
-fields = [{ name = "leaf", type = "stream", max_length = 2048, chunk_size = 192 }]
-[methods.putLeaf.response]
-fields = [{ name = "generation", type = "u32" }, { name = "digest", type = "bytes[32]" }]
+[methods.describePage]
+ins = 0x33
+[methods.describePage.request]
+fields = [{ name = "page", type = "stream", max_length = 1024, chunk_size = 192 }]
+[methods.describePage.response]
+fields = [{ name = "length", type = "u32" }, { name = "digest", type = "bytes[32]" }]
 
-[methods.signAdmission]
-ins = 0x70
+[methods.readWindow]
+ins = 0x43
 stream_mode = "chunked"
 
-[methods.buildEnvelope]
-ins = 0x10
+[methods.exchangePage]
+ins = 0x13
 stream_mode = "public-invalidate"
-[methods.buildEnvelope.request]
-fields = [{ name = "bootstrap", type = "stream", max_length = 1792, chunk_size = 192 }]
-[methods.buildEnvelope.response]
-fields = [{ name = "envelope", type = "stream", max_length = 1792, chunk_size = 192 }]
-[methods.signAdmission.request]
-fields = [{ name = "transcript", type = "stream", max_length = 320, chunk_size = 192 }]
-[methods.signAdmission.response]
-fields = [{ name = "proof", type = "stream", max_length = 1408, chunk_size = 192 }]
+[methods.exchangePage.request]
+fields = [{ name = "pages", type = "stream", max_length = 1472, chunk_size = 192 }]
+[methods.exchangePage.response]
+fields = [{ name = "pages", type = "stream", max_length = 1472, chunk_size = 192 }]
+[methods.readWindow.request]
+fields = [{ name = "offsets", type = "stream", max_length = 352, chunk_size = 192 }]
+[methods.readWindow.response]
+fields = [{ name = "window", type = "stream", max_length = 1280, chunk_size = 192 }]
 `
 
 // Parse transports exact per-method mode bytes without fixing spellings; an
@@ -61,11 +61,11 @@ func TestParseStreamMode(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			input := strings.Replace(streamModeSchemaTOML, "stream_mode = \"chunked\"", "stream_mode = \""+mode+"\"", 1)
 			s := mustParseSchema(t, input)
-			if s.Methods["signTranscript"].StreamMode != mode {
-				t.Fatalf("stream mode metadata lost: %q; want %q", s.Methods["signTranscript"].StreamMode, mode)
+			if s.Methods["inspectOffsets"].StreamMode != mode {
+				t.Fatalf("stream mode metadata lost: %q; want %q", s.Methods["inspectOffsets"].StreamMode, mode)
 			}
-			if s.Methods["putLeaf"].StreamMode != "" || s.Methods["buildEnvelope"].StreamMode != pluginapi.StreamModePublicInvalidate {
-				t.Fatalf("other methods changed: %q %q", s.Methods["putLeaf"].StreamMode, s.Methods["buildEnvelope"].StreamMode)
+			if s.Methods["describePage"].StreamMode != "" || s.Methods["exchangePage"].StreamMode != pluginapi.StreamModePublicInvalidate {
+				t.Fatalf("other methods changed: %q %q", s.Methods["describePage"].StreamMode, s.Methods["exchangePage"].StreamMode)
 			}
 		})
 	}
@@ -82,13 +82,13 @@ func TestValidateStreamMode(t *testing.T) {
 	for _, tc := range []struct {
 		name, from, to, path, message string
 	}{
-		{"unknown", `stream_mode = "chunked"`, `stream_mode = "Chunked"`, "methods.signTranscript.stream_mode", "must be public-invalidate or chunked"},
-		{"padded", `stream_mode = "chunked"`, `stream_mode = "chunked "`, "methods.signTranscript.stream_mode", "must be public-invalidate or chunked"},
+		{"unknown", `stream_mode = "chunked"`, `stream_mode = "Chunked"`, "methods.inspectOffsets.stream_mode", "must be public-invalidate or chunked"},
+		{"padded", `stream_mode = "chunked"`, `stream_mode = "chunked "`, "methods.inspectOffsets.stream_mode", "must be public-invalidate or chunked"},
 		{"ordinary", "ins = 0x01\n", "ins = 0x01\nstream_mode = \"chunked\"\n", "methods.getVersion.stream_mode", "applies only to a streamed method"},
-		{"whole-reply-area", `stream_workspace_cleanup = "authenticated-invalidate"`, `stream_workspace_cleanup = "whole-reply-area"`, "methods.signTranscript.stream_mode", "requires stream_workspace = persistent and stream_workspace_cleanup = authenticated-invalidate"},
-		{"released-default", "stream_workspace_cleanup = \"authenticated-invalidate\"\n", "", "methods.signAdmission.stream_mode", "requires stream_workspace = persistent and stream_workspace_cleanup = authenticated-invalidate"},
-		{"authenticated-streamed-result", "ins = 0x70\nstream_mode = \"chunked\"\n", "ins = 0x70\n", "methods.signAdmission.response", "stream response is not allowed"},
-		{"authenticated-public-result", "stream_mode = \"public-invalidate\"\n", "", "methods.buildEnvelope.response", "stream response is not allowed"},
+		{"whole-reply-area", `stream_workspace_cleanup = "authenticated-invalidate"`, `stream_workspace_cleanup = "whole-reply-area"`, "methods.inspectOffsets.stream_mode", "requires stream_workspace = persistent and stream_workspace_cleanup = authenticated-invalidate"},
+		{"released-default", "stream_workspace_cleanup = \"authenticated-invalidate\"\n", "", "methods.readWindow.stream_mode", "requires stream_workspace = persistent and stream_workspace_cleanup = authenticated-invalidate"},
+		{"authenticated-streamed-result", "ins = 0x43\nstream_mode = \"chunked\"\n", "ins = 0x43\n", "methods.readWindow.response", "stream response is not allowed"},
+		{"authenticated-public-result", "stream_mode = \"public-invalidate\"\n", "", "methods.exchangePage.response", "stream response is not allowed"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			input := strings.Replace(streamModeSchemaTOML, tc.from, tc.to, 1)
@@ -99,7 +99,7 @@ func TestValidateStreamMode(t *testing.T) {
 		})
 	}
 	// Every mode needs a request stream: response-only chunked and public methods are refused.
-	for _, name := range []string{"signAdmission", "buildEnvelope"} {
+	for _, name := range []string{"readWindow", "exchangePage"} {
 		s := mustParseSchema(t, streamModeSchemaTOML)
 		s.Methods[name].Request = nil
 		requireValidationError(t, Validate(s), "methods."+name+".stream_mode", "requires a request stream")
@@ -110,7 +110,7 @@ func TestValidateStreamMode(t *testing.T) {
 // of the class it must refuse; jcrpc-mutants requires the named assertion
 // after the unmodified test passes, and refuses setup/compile failures as kills.
 func TestStreamModeNarrowingMutants(t *testing.T) {
-	for _, name := range []string{"mode-parser-drops-chunked", "mode-validator-unknown-bogus", "mode-validator-request-0x70", "mode-validator-whole-reply", "cleanup-auth-response-stream"} {
+	for _, name := range []string{"mode-parser-drops-chunked", "mode-validator-unknown-bogus", "mode-validator-request-0x42", "mode-validator-whole-reply", "cleanup-auth-response-stream"} {
 		t.Run(name, func(t *testing.T) {
 			cmd := exec.Command("go", "run", "./cmd/jcrpc-mutants", "--repo", "..", "--out", filepath.Join(t.TempDir(), "mutants"), "--only", name)
 			output, err := cmd.CombinedOutput()

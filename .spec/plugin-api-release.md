@@ -16,11 +16,12 @@ landed release. The parent obtains the exact signed core commit from the managed
 checkpoint/PR flow after this leaf is accepted; no producer commits/tags here.
 
 Immutable compatibility baseline: signed release `v0.4.5`, commit
-`cfed4182356a4f4609c88f58924aac79c05ae5b6`. Consumer baseline: committed
-bsimId `2d23abdafa1e0f68c6003ab56274b2ac38378ef9`,
-`utils/idl/bsim-auth.toml`, SHA-256
-`1be1ed52ac9a85a62d5c5e371a9e22d38f834282681528476ca071e7bfc2cb66`.
-Use only the staged immutable snapshot, never the live consumer working tree.
+`cfed4182356a4f4609c88f58924aac79c05ae5b6`. The independent synthetic
+compatibility input is `compatibility/inputs/sample-store.toml`, revision
+`sample-store-v1`, SHA-256
+`46729b4e03cc71d6997de286c2361271a1c281fbc7839556c79de031a2b63847`.
+Its generated baseline is recorded separately from the original release matrix.
+Use the pinned synthetic input; no downstream product contract is required.
 
 The parent must:
 

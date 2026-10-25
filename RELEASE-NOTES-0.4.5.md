@@ -19,21 +19,8 @@ Urgent generator and counter-launcher corrections before facade migration.
   runtime classpath, with freshness checks that reject missing, stale, ambiguous
   or interrupted publication. It no longer expects an obsolete bridge filename.
 
-Observed generated allocation payload for the immutable bsim-auth B6 IDL at
-`2d23abdafa1e0f68c6003ab56274b2ac38378ef9` (IDL SHA-256
-`1be1ed52ac9a85a62d5c5e371a9e22d38f834282681528476ca071e7bfc2cb66`):
-
-| Constructed generated arrays | v0.4.4 | v0.4.5 transient default | v0.4.5 persistent opt-in |
-| --- | ---: | ---: | ---: |
-| Transient byte/short payload | 2375 B | 2375 B | 328 B |
-| Persistent byte/short payload | 108 B | 108 B | 2156 B |
-| Transient handler references | 1 slot | 1 slot | 1 slot |
-
-The opt-in saves 2047 B of measured transient primitive payload: a 2048 B bulk
-workspace moves to NVM and a 1 B transient reset marker is added. These are
-constructed generated-array counts using the pinned relux.2 simulator, excluding
-object headers, reference widths and digest-provider/JCRE/runtime allocations.
-They are neither total physical-card RAM measurements nor NovaCard hardware proof.
+Generated-array allocation is measured by the independent storage fixture's
+simulator tests. A source hash alone is not an allocation measurement.
 
 Persistent storage is for large, infrequent **open-data** frames only. Never stage
 secrets in NVM; the IDL has no secrecy annotations and cannot enforce this rule.
@@ -48,7 +35,7 @@ bytes are wiped only at the next stream dispatch before reuse. Abort, deselect
 and terminal protocol cleanup wipe explicitly. Interrupted cleanup can leave
 residual bytes; no atomic secure erasure or tear-resistance guarantee is made.
 See [storage policy and limits](.spec/idl.md#52-bulk-workspace-storage-policy).
-Consumer IDL opt-in and the physical NovaCard rerun remain consumer-owned.
+Consumer IDL opt-in and the physical target card rerun remain consumer-owned.
 
 The immutable v0.4.4 comparison source is peeled commit
 `01926103eb7a9997f83923a2440d47d748b401a1`; annotated tag object

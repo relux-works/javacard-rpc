@@ -8,8 +8,8 @@ import io.jcrpc.client.TCPTransport
 import kotlinx.coroutines.runBlocking
 import kotlin.system.exitProcess
 
-private const val DISPLAY_NAME = "\u041F\u0440\u0438\u0432\u0435\u0442, BSim"
-private const val ROUNDTRIP_MESSAGE = "\u041F\u0440\u0438\u0432\u0435\u0442, BSim \uD83D\uDE80"
+private const val DISPLAY_NAME = "\u041F\u0440\u0438\u0432\u0435\u0442, Store"
+private const val ROUNDTRIP_MESSAGE = "\u041F\u0440\u0438\u0432\u0435\u0442, Store \uD83D\uDE80"
 
 fun main(): Unit = runBlocking {
     val tcpTransport = TCPTransport(host = "127.0.0.1", port = 9025)

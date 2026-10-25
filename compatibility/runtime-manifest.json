@@ -6,5 +6,5 @@
   {"target":"kotlin","repository":"https://github.com/relux-works/javacard-rpc-client-kotlin","tag":"v0.3.0","tag_object":"6362729d42eeb8e893a169589ab018de04a38297","commit":"df7a85ea9715ae00827971ddb6608704b2f6ff29","go_module":"github.com/relux-works/javacard-rpc-client-kotlin","backend_version":"v0.3.0","backend_import":"github.com/relux-works/javacard-rpc-client-kotlin/codegen","runtime":"io.jcrpc:javacard-rpc-client-kotlin:0.3.0"},
   {"target":"swift","repository":"https://github.com/relux-works/javacard-rpc-client-swift","tag":"v0.2.2","tag_object":"e0052b54b590a32faa96baad7b0a8d3fbc2efe0d","commit":"3db025b025238ab21b2b458bd0cf0cad285223f4","go_module":"github.com/relux-works/javacard-rpc-client-swift","backend_version":"v0.2.2","backend_import":"github.com/relux-works/javacard-rpc-client-swift/codegen","runtime":"JavaCardRPCClient","swift_package":"javacard-rpc-client-swift","swift_exact_version":"0.2.2"}
  ],
- "bsim_input":{"path":"compatibility/inputs/bsim-auth-2d23abd.toml","commit":"2d23abdafa1e0f68c6003ab56274b2ac38378ef9","sha256":"1be1ed52ac9a85a62d5c5e371a9e22d38f834282681528476ca071e7bfc2cb66"}
+ "sample_input":{"path":"compatibility/inputs/sample-store.toml","revision":"sample-store-v1","sha256":"46729b4e03cc71d6997de286c2361271a1c281fbc7839556c79de031a2b63847"}
 }

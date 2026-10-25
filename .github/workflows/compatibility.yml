@@ -28,7 +28,7 @@ jobs:
           go build -o ../.temp/jcrpc-gen ./cmd/jcrpc-gen
       - name: Public toolchain bootstrap with digest verification
         run: .temp/jcrpc-compat --mode toolchain --root "$PWD/.temp/toolchain"
-      - name: Verify signed runtime pins and generate examples plus immutable bsim
+      - name: Verify signed runtime pins and generate examples plus pinned SampleStore
         run: |
           .temp/jcrpc-compat --repo . --mode bootstrap --root .temp/consumer
           .temp/jcrpc-compat --repo . --mode prepare --root .temp/consumer

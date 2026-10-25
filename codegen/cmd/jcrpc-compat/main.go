@@ -158,14 +158,14 @@ func prepare(repo, root string) error {
 	if e != nil {
 		return e
 	}
-	inputs = append(inputs, filepath.Join(repo, "compatibility/inputs/bsim-auth-2d23abd.toml"))
+	inputs = append(inputs, filepath.Join(repo, "compatibility/inputs/sample-store.toml"))
 	for i, input := range inputs {
 		out := filepath.Join(gen, fmt.Sprint(i))
 		// Explicit Java/Kotlin is applicable to all schemas; streams refuse Swift.
 		if e = command(repo, bin, "--java", "io.jcrpc.compat", "--kotlin", "io.jcrpc.compat", "--out-dir", out, input); e != nil {
 			return e
 		}
-		// Ordinary examples also exercise Swift. The bsim and stream inputs are
+		// Ordinary examples also exercise Swift. The storage and stream inputs are
 		// tested for refusal by the existing production CLI suite, not swallowed.
 		schema, err := codegen.ParseFile(input)
 		if err != nil {

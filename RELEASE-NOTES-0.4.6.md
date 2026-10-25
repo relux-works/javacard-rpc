@@ -16,12 +16,11 @@ The API tag is `pluginapi/v0.1.0`, peeled commit
 backend imports and runtime identities are recorded in the
 [runtime manifest](compatibility/runtime-manifest.json).
 
-Ordered CLI results and generated package bytes are identical to signed v0.4.5
-across repository examples, generator fixtures and the immutable B6 schema at
-`2d23abdafa1e0f68c6003ab56274b2ac38378ef9` (SHA-256
-`1be1ed52ac9a85a62d5c5e371a9e22d38f834282681528476ca071e7bfc2cb66`).
+Compatibility fixtures cover repository examples and synthetic bounded storage.
+Java Card and Kotlin support streams; Swift refuses stream generation before
+writing output. Independent baseline provenance is retained with the fixtures.
 Public native names, default output, stream protocol and workspace policy are
-preserved. Counter supports all three targets; B6 supports Java Card and Kotlin.
+preserved. Counter supports all three targets; SampleStore supports Java Card and Kotlin.
 Swift stream selection still refuses before writing output.
 
 Use the facade's manifest to prepare exact local runtime checkouts. Gradle

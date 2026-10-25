@@ -246,7 +246,7 @@ Flags:
   --verbose           Print progress to stderr
 ```
 
-Simulator coordinate override (consumer pinned to a jCardSim fork, e.g. bsimId
+Simulator coordinate override (consumer pinned to a jCardSim fork, e.g. a downstream consumer
 on `works.relux:jcardsim:3.0.5.9-relux.1`): never edit generated output or
 `bridge/build.gradle`; pass it in instead. Both declare `mavenCentral()` then
 `mavenLocal()`, so a fork from `publishToMavenLocal` resolves as-is. Default
@@ -298,6 +298,6 @@ handwritten adapters; no old overload is provided. Copy the entry-owned window
 from the current process/processData invocation. Keep every borrowed array
 command-local, consume input before overlap and preserve output through send/read.
 See [CALLER-WORKSPACE.md](CALLER-WORKSPACE.md) for exact pins and examples.
-Generic empty scratch is legal; Auth phase minima and physical/SD authority are
+Generic empty scratch is legal; business-handler minima and physical/SD authority are
 consumer responsibilities. Test JVM gates sequentially with `--no-daemon
 --max-workers=2`; `make test-cap` also qualifies the mixed caller-workspace fixture.

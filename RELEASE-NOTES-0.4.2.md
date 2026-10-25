@@ -38,6 +38,4 @@ wire protocol, the instruction map or the refusals changes.
   `TestGeneratedJavaSkeletonPruningIsVisibleBetweenSchemas` pin the pruning in both
   directions: a called helper must survive, an uncalled one must not, and the two
   fixtures must actually disagree.
-- Measured on the BSimID Auth applet (nine streamed methods, Java Card Classic
-  3.0.5, `jc320v25.1_kit`): Load File Data Block 32 244 → 28 441 octets, −3 803.
 - `make release-check` green, including `TestGeneratedJavaStreamPackageConvertsToCAP`.

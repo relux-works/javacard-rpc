@@ -10,12 +10,12 @@ source changes before every native build. Go's resolved graph must use those
 versions and pluginapi v0.1.2 without replacements, and every manifest tag must
 be a plain release version (no pseudo-version or prerelease).
 
-The immutable B6 fixture is `inputs/bsim-auth-2d23abd.toml`, copied from bsimId main
-commit `2d23abdafa1e0f68c6003ab56274b2ac38378ef9`, SHA-256
-`1be1ed52ac9a85a62d5c5e371a9e22d38f834282681528476ca071e7bfc2cb66`.
-It contains schema only; no live consumer changes or device identifiers are used.
-Java/Kotlin generation applies to it; Swift stream generation still exits 2 before
-writing output. The counter example supports all three targets.
+The independent synthetic fixture is `inputs/sample-store.toml`, revision
+`sample-store-v1`, SHA-256
+`46729b4e03cc71d6997de286c2361271a1c281fbc7839556c79de031a2b63847`.
+It exercises fixed records and bounded page transfer. It contains no consumer
+protocol. Java/Kotlin generate it; Swift stream selection exits 2 before any
+output. The counter example supports all three targets.
 
 ## Initial bootstrap (network allowed)
 
@@ -40,7 +40,7 @@ Bootstrap needs Git/network access and downloads exact runtime checkouts under
 identity directories. The first native builds populate Gradle plugin/dependency
 caches. Swift packages use local paths and have no remote package dependencies.
 Preparing a consumer builds the facade executable and regenerates the repository
-examples plus pinned bsim schema. Facade v0.6.0 appends independent caller workspace to ordinary and stream Java
+examples plus synthetic storage schema. Facade v0.6.0 appends independent caller workspace to ordinary and stream Java
 callbacks/entry points. Kotlin/Swift wire and package identities remain unchanged.
 The JVM fixture implements packed and borrowed-span callbacks, checks fixed
 capacity rejection before callback entry, and preserves the existing encoded wire.
@@ -147,7 +147,7 @@ The Relux simulator accepts `MessageDigest.getInstance(..., true)` as a no-op
 sharing flag; stock 3.0.5.9 legitimately refuses that unsupported mode. Passing
 fork simulation does not certify physical-card sharing/firewall semantics. CAP
 conversion uses JDK 11, explicit `jckit` and the selected kit's default target,
-with converter verification enabled. No physical-card install/reset or live bsim
+with converter verification enabled. No physical-card install/reset or live consumer
 regeneration is part of this lane. Optional historical allocation-baseline tests
 still require their own explicit baseline and are not described as passing when
 skipped. Public fetch provenance is not evidence of executed Linux CI.
@@ -158,7 +158,7 @@ skipped. Public fetch provenance is not evidence of executed Linux CI.
 | --- | --- | --- |
 | `cd codegen && go run ./cmd/jcrpc-compat --repo .. --mode check` | Manifest/receipt/resolved-version integrity | Refusal or acceptance on stdout/stderr |
 | `jcrpc-compat --mode bootstrap --root .temp/consumer` | Exact signed local runtime checkouts | `.temp/consumer/runtimes/` |
-| `jcrpc-compat --mode prepare --root .temp/consumer` | Example and immutable bsim generation, consumer roots | `.temp/consumer/generated/`, `jvm/`, `swift/` |
+| `jcrpc-compat --mode prepare --root .temp/consumer` | Example and synthetic storage generation, consumer roots | `.temp/consumer/generated/`, `jvm/`, `swift/` |
 | `jcrpc-compat --mode jvm --root .temp/consumer` | Native Gradle builds and tests with includeBuild | Native `build/` directories |
 | `jcrpc-compat --mode swift --root .temp/consumer` | Runtime and path-consumer Swift Testing | Native `.build/` directories |
 | `go -C codegen test ./cmd/jcrpc-compat -run '^TestOfflineGuardRejectsDependencyAccess$' -count=1 -v` | Actual dependency network-access rejection | Named Go test output |

@@ -84,40 +84,30 @@ func TestRunWholeCleanupGeneration(t *testing.T) {
 	}
 }
 
-// Retains the historical measured whole-mode identities and unchanged transport.
-// Real TOML CLI generation matches the five regenerated signed v0.5.0 source
-// identities, whose four API-bearing files intentionally changed. B4 restores
-// the keeper fixture CLA. This is source parity, not repeated Auth measurement.
-func TestRunWholeCleanupMeasuredAuthIdentity(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "compatibility", "inputs", "bsim-auth-2d23abd.toml"))
+// Real TOML CLI generation matches the synthetic storage source projection.
+// This checks source identity, not independently measured allocation behavior.
+func TestRunWholeCleanupSampleProjection(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "compatibility", "inputs", "sample-store.toml"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	input := strings.Replace(string(raw), "cla = 0xB6", "cla = 0xB4", 1)
-	input = strings.Replace(input, "[applet]", "[applet]\nstream_workspace = \"persistent\"\nstream_workspace_cleanup = \"whole-reply-area\"", 1)
-	schema := writeFile(t, t.TempDir(), "auth.toml", input)
+	input := strings.Replace(string(raw), "[applet]", "[applet]\nstream_workspace = \"persistent\"\nstream_workspace_cleanup = \"whole-reply-area\"", 1)
+	schema := writeFile(t, t.TempDir(), "sample-store.toml", input)
 	out := t.TempDir()
 	var stderr bytes.Buffer
-	if code := run([]string{"--java", "ru.mts.bsimid.applet.auth", "--stream-memory", "clear_on_reset", "--simulator-dependency", "works.relux:jcardsim:3.0.5.9-relux.2", "--out-dir", out, schema}, &stderr); code != 0 {
-		t.Fatalf("measured Auth generation: %d %s", code, &stderr)
-	}
-	historical := map[string]string{
-		"BSimAuthBoundedStreamRuntime.java": "5063f440b42c08619274cd16206541c55c98004acd3e3c8b727c26e9af9fb90f",
-		"BSimAuthSkeleton.java":             "42ad5fa6ca43e93eb39e9d28e60b302ffd6bd51080a0e2f773c02e25f0d56cd7",
-		"BSimAuthStreamAPDUAdapter.java":    "ffeabcbc5fd61f86ce2fbe66912f0d8d228a1fbde4ac10737934e5c9ce49c8f8",
-		"BSimAuthStreamEndpoint.java":       "52af535eb9bf709701333862ea07d3e58f61f21ddbeac02da83465d525c05c09",
-		"BSimAuthTransport.java":            "75ff6fd4b035769347be3c6debe4e458e0141a0544f2f779a727939c626fb279",
+	if code := run([]string{"--java", "io.jcrpc.store", "--stream-memory", "clear_on_reset", "--simulator-dependency", "works.relux:jcardsim:3.0.5.9-relux.2", "--out-dir", out, schema}, &stderr); code != 0 {
+		t.Fatalf("storage generation: %d %s", code, &stderr)
 	}
 	var expected map[string]string
-	receipt, err := os.ReadFile(filepath.Join("..", "..", "testdata", "bsim-whole-source-v050.json"))
+	receipt, err := os.ReadFile(filepath.Join("..", "..", "testdata", "sample-store-whole-source.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err = json.Unmarshal(receipt, &expected); err != nil {
 		t.Fatal(err)
 	}
-	if len(expected) != len(historical) || expected["BSimAuthTransport.java"] != historical["BSimAuthTransport.java"] {
-		t.Fatal("historical transport/inventory identity changed")
+	if len(expected) != 5 {
+		t.Fatal("incomplete storage source projection")
 	}
 	checked := 0
 	for name, data := range cleanupFiles(t, out) {
@@ -127,7 +117,7 @@ func TestRunWholeCleanupMeasuredAuthIdentity(t *testing.T) {
 		}
 		sum := sha256.Sum256(data)
 		if hex.EncodeToString(sum[:]) != want {
-			t.Fatalf("measured Auth source drift: %s", name)
+			t.Fatalf("storage source drift: %s", name)
 		}
 		checked++
 	}
@@ -262,7 +252,7 @@ func cleanupFiles(t *testing.T, root string) map[string][]byte {
 // schemas. This checks current parity; signed-release binary parity is a separate
 // release lane. It never exercises a hypothetical explicit-mode backend.
 func TestRunEmptyCleanupPreservesOutputs(t *testing.T) {
-	for _, input := range []string{filepath.Join("..", "..", "testdata", "counter.toml"), filepath.Join("..", "..", "testdata", "stream.toml"), filepath.Join("..", "..", "..", "compatibility", "inputs", "bsim-auth-2d23abd.toml")} {
+	for _, input := range []string{filepath.Join("..", "..", "testdata", "counter.toml"), filepath.Join("..", "..", "testdata", "stream.toml"), filepath.Join("..", "..", "..", "compatibility", "inputs", "sample-store.toml")} {
 		raw, err := os.ReadFile(input)
 		if err != nil {
 			t.Fatal(err)
@@ -310,24 +300,24 @@ func TestRunEmptyCleanupPreservesOutputs(t *testing.T) {
 }
 
 const authenticatedRequestOnlyTOML = `[applet]
-name = "AuthShape"
+name = "BatchStore"
 version = "1.0.0"
-aid = "F00000010301"
-cla = 0xB0
+aid = "F05566000101"
+cla = 0xC0
 stream_workspace = "persistent"
 stream_workspace_cleanup = "authenticated-invalidate"
 
-[methods.getVersion]
-ins = 0x01
-[methods.getVersion.response]
+[methods.readState]
+ins = 0x03
+[methods.readState.response]
 fields = [{ name = "version", type = "u8" }]
 
-[methods.signTranscript]
-ins = 0x20
-[methods.signTranscript.request]
-fields = [{ name = "transcript", type = "stream", max_length = 2048, chunk_size = 192 }]
-[methods.signTranscript.response]
-fields = [{ name = "signatureLength", type = "u8" }, { name = "signature", type = "bytes[72]" }]
+[methods.summarizeBatch]
+ins = 0x40
+[methods.summarizeBatch.request]
+fields = [{ name = "packet", type = "stream", max_length = 1537, chunk_size = 128 }]
+[methods.summarizeBatch.response]
+fields = [{ name = "prefix", type = "bytes[21]" }, { name = "recordCount", type = "u32" }, { name = "format", type = "u16" }, { name = "state", type = "u8" }, { name = "accepted", type = "bool" }]
 `
 
 // The composed CLI emits exactly the selected backend's authenticated-invalidate
@@ -340,7 +330,7 @@ func TestRunAuthenticatedInvalidateGeneration(t *testing.T) {
 	}
 	for _, memory := range []string{"clear_on_deselect", "clear_on_reset"} {
 		t.Run(memory, func(t *testing.T) {
-			input := writeFile(t, t.TempDir(), "authshape.toml", authenticatedRequestOnlyTOML)
+			input := writeFile(t, t.TempDir(), "batchstore.toml", authenticatedRequestOnlyTOML)
 			out := t.TempDir()
 			var stderr bytes.Buffer
 			args := []string{"--java", "probe", "--kotlin", "probe", "--stream-memory", memory, "--out-dir", out, input}
@@ -355,7 +345,7 @@ func TestRunAuthenticatedInvalidateGeneration(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			generated := cleanupFiles(t, filepath.Join(out, "authshape-server-javacard"))
+			generated := cleanupFiles(t, filepath.Join(out, "batchstore-server-javacard"))
 			if len(generated) != len(files) || len(files) == 0 {
 				t.Fatalf("package inventory: %d != %d", len(generated), len(files))
 			}
@@ -364,18 +354,18 @@ func TestRunAuthenticatedInvalidateGeneration(t *testing.T) {
 					t.Fatalf("package differs: %s", file.Name)
 				}
 			}
-			skeleton := string(generated["src/main/java/probe/AuthShapeSkeleton.java"])
+			skeleton := string(generated["src/main/java/probe/BatchStoreSkeleton.java"])
 			if !strings.Contains(skeleton, "short callerWorkspaceCapacity,\n            boolean authenticated) {") {
 				t.Fatal("authority flag missing from generated dispatchStreamTo")
 			}
 			control := t.TempDir()
-			args[len(args)-1] = writeFile(t, t.TempDir(), "authshape.toml", strings.Replace(authenticatedRequestOnlyTOML, "stream_workspace_cleanup = \"authenticated-invalidate\"\n", "", 1))
+			args[len(args)-1] = writeFile(t, t.TempDir(), "batchstore.toml", strings.Replace(authenticatedRequestOnlyTOML, "stream_workspace_cleanup = \"authenticated-invalidate\"\n", "", 1))
 			args[len(args)-2] = control
 			stderr.Reset()
 			if code := run(args, &stderr); code != 0 {
 				t.Fatalf("empty selector control: %d %s", code, &stderr)
 			}
-			selected, plain := cleanupFiles(t, filepath.Join(out, "authshape-client-kotlin")), cleanupFiles(t, filepath.Join(control, "authshape-client-kotlin"))
+			selected, plain := cleanupFiles(t, filepath.Join(out, "batchstore-client-kotlin")), cleanupFiles(t, filepath.Join(control, "batchstore-client-kotlin"))
 			if len(selected) == 0 || len(selected) != len(plain) {
 				t.Fatal("Kotlin inventory differs")
 			}
@@ -389,14 +379,14 @@ func TestRunAuthenticatedInvalidateGeneration(t *testing.T) {
 }
 
 // Streamed responses are refused at validation, by method path, before any
-// backend or filesystem write; the real Auth IDL names exactly its two
+// backend or filesystem write; the synthetic storage IDL names exactly its two
 // response-stream methods. Kotlin-only selection is refused the same way.
 func TestRunAuthenticatedInvalidateResponseStreamRefusal(t *testing.T) {
 	stream, err := os.ReadFile(filepath.Join("..", "..", "testdata", "stream.toml"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	auth, err := os.ReadFile(filepath.Join("..", "..", "..", "compatibility", "inputs", "bsim-auth-2d23abd.toml"))
+	auth, err := os.ReadFile(filepath.Join("..", "..", "..", "compatibility", "inputs", "sample-store.toml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -406,7 +396,7 @@ func TestRunAuthenticatedInvalidateResponseStreamRefusal(t *testing.T) {
 		methods     []string
 	}{
 		{"stream", string(stream), []string{"issueReport", "processPacket"}},
-		{"auth", string(auth), []string{"buildProvisioningEnvelopeV3", "signAdmissionV1"}},
+		{"sample-store", string(auth), []string{"exchangePages", "enumeratePages"}},
 	} {
 		for _, flags := range [][]string{{"--java", "probe", "--kotlin", "probe"}, {"--kotlin", "probe"}} {
 			t.Run(tc.name+"/"+flags[0], func(t *testing.T) {

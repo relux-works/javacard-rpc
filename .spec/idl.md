@@ -260,17 +260,11 @@ its separate full-workspace cost; this selector does not promise torn-write
 atomicity or physical endurance.
 
 `written-bytes-only` is rejected in every storage configuration. It remains only
-an unused constant in published pluginapi v0.1.1. In the historical real Auth
-comparison, adapting the SDK's raw-array contract to a tracked writer required
-2048 B of transient staging, adding 2060 B of attributed RAM and 1912 B of CAP
-against whole mode. Whole-mode counters include instrumented Auth/generated
-stores; output-to-workspace writes by providers outside the inventory are
-omitted, bounded by the actual output lengths for each workload. Writer staging
-and the later counted workspace copy create a measurement asymmetry: the table
-does not claim total workspace writes or an exact write-saving percentage.
-The owner selected whole-reply-area for release and
-rejected the writer implementation. Historical writer measurements describe a
-comparison fixture, not a supported handler API.
+an unused constant in published pluginapi v0.1.1, not a supported handler API.
+The supported whole mode retains raw-array handlers and wipes their entire
+authorized reply area. Logical-store observations cover only the instrumented
+stores; they do not establish total workspace writes, physical endurance or a
+consumer's complete RAM budget.
 
 Use persistent workspace only for large, infrequent frames containing open
 data. Secrets must never be staged in NVM. The current IDL field/message model
@@ -307,18 +301,12 @@ leave torn/residual workspace bytes. Reset prevents that session from being
 recovered; subsequent stream dispatch retries full cleanup. No automatic NVM
 zeroing on reset, atomic wipe, or secure erasure is promised.
 
-Simulator construction accounting for generated bsim-auth (`W = 2048`):
-
-| Generated array payload | v0.4.4 / default | Persistent policy |
-| --- | ---: | ---: |
-| Transient byte/short payload | 2375 B | 328 B |
-| Persistent byte/short payload | 108 B | 2156 B |
-| Transient handler references | 1 slot | 1 slot |
-
-Moving the workspace saves 2048 B and adds a 1 B transient reset marker, a net
-2047 B reduction. This counts generated arrays, including static dispatch tables
-and three mutable failure-status words. Object headers, reference widths,
-digest/provider/JCRE allocations and physical-card memory totals are excluded.
+The independent SampleStore allocation test measures generated arrays for its
+own schema, including static dispatch tables and mutable failure-status words.
+Moving a workspace of capacity `W` to persistent storage removes `W` transient
+bytes and adds a one-byte transient reset marker. Object headers, reference
+widths, provider/JCRE allocations and physical-card totals are outside that
+generated-array accounting. A different consumer must measure its own schema.
 
 #### 5.2.1 Per-method stream modes
 

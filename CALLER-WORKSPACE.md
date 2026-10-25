@@ -148,21 +148,21 @@ scratch preserves the pending session for a valid retry. Other input/output,
 protocol and callback failures keep their existing cleanup semantics.
 
 Fixed replies still offer exactly 127/190/177 bytes when declared and require
-exact produced count. Scratch 196/260 never substitutes for reply capacity.
+exact produced count. A larger scratch window never substitutes for reply capacity.
 Input/output/scratch may deliberately alias; the trusted business handler must
 consume live input before overwrite and preserve the result through final
 send/read. There is no handler sandbox or transactional rollback guarantee.
 
-Auth's 196-byte constructor probe and 260-byte phase minimum belong in its
-handwritten handler, before that phase's effects. Generic RPC has no Auth
-minimum. A physical 133-byte buffer cannot meet those minima or a whole 177/190
+Consumer-specific workspace minima belong in the handwritten handler and must
+be checked before that operation's effects. Generic RPC imposes no business
+handler minimum. An undersized physical buffer cannot satisfy a larger declared
 reply. A host/simulator buffer does not establish physical capacity, Security
 Domain caller permissions, consumer RAM/NVM safety, crypto-provider behavior or
-end-to-end Auth acceptance. Stream persistent storage retains its documented
+end-to-end consumer acceptance. Stream persistent storage retains its documented
 reset/wipe residual and NVM endurance limits and must not hold secrets.
 Optional `int` support remains required by this Classic renderer.
 
-After actual facade publication, bsim-id and KeyVault must consume the parent's
+After actual facade publication, downstream consumers must consume the parent's
 exact facade tag/commit/manifest, regenerate their own maintained callbacks,
 retain handwritten phase/lazy-init guards, and qualify under their own JVM/device
 authority. Local generated edits, compatibility shims and unpublished replaces

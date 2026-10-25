@@ -4,7 +4,7 @@
 
 Both the generated Java Card server build and the bridge JVM compile against
 `com.klinec:jcardsim:3.0.5.9` by default. A consumer pinned to another
-simulator artefact — for example `bsimId`, which uses the
+simulator artefact — for example `a downstream consumer`, which uses the
 `relux-works/jcardsim` fork `works.relux:jcardsim:3.0.5.9-relux.1` because
 upstream refuses `externalAccess=true` engines — never edits generated output
 or the bridge build; it passes the coordinate in:
@@ -24,10 +24,10 @@ against — there is no separate manifest. `bridge/build.gradle` now also adds
 With the default coordinate, generated output and the resolved bridge
 dependency are byte-identical to 0.3.0.
 
-This is how `bsimId` builds:
+This is how `a downstream consumer` builds:
 
 ```bash
-jcrpc-gen --all --out-dir ./gen --simulator-dependency works.relux:jcardsim:3.0.5.9-relux.1 keyvault.toml
+jcrpc-gen --java io.jcrpc.sample --kotlin io.jcrpc.sample --out-dir ./gen --simulator-dependency works.relux:jcardsim:3.0.5.9-relux.1 compatibility/inputs/sample-store.toml
 cd bridge && ./gradlew build -PjcardsimDependency=works.relux:jcardsim:3.0.5.9-relux.1
 ```
 

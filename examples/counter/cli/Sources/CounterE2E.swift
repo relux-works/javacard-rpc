@@ -210,12 +210,12 @@ struct CounterE2E {
         // Test 15: getDisplayName() → UTF-8 string assembled by applet
         await test("15. getDisplayName() → UTF-8 string") {
             let displayName = try await counter.getDisplayName()
-            try expect(displayName, "Привет, BSim", "displayName")
+            try expect(displayName, "Привет, Store", "displayName")
         }
 
         // Test 16: echoMessage() → UTF-8 roundtrip
         await test("16. echoMessage() → UTF-8 roundtrip") {
-            let message = "Привет, BSim 🚀"
+            let message = "Привет, Store 🚀"
             let echoed = try await counter.echoMessage(message: message)
             try expect(echoed, message, "echoMessage")
         }

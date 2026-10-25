@@ -72,7 +72,7 @@ request/reply arrays or retained APDU reference are introduced.
 
 ## Consumer migration handoff
 
-bsimId, Auth and KeyVault owners should pin the verified facade root source and
+Downstream owners should pin the verified facade root source and
 use `compatibility/runtime-manifest.json` for the exact runtime checkouts above.
 Build `jcrpc-gen` from that source, regenerate ordinary Java skeletons, and
 migrate their subclasses and APDU send sites together. Keep Kotlin v0.3.0,

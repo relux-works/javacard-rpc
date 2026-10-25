@@ -326,7 +326,7 @@ class CounterAppletTest {
         fun `getDisplayName returns utf8 text`() {
             val resp = send(0x0D, le = 64)
             assertEquals(0x9000, resp.sw)
-            assertContentEquals("Привет, BSim".toByteArray(), resp.data)
+            assertContentEquals("Привет, Store".toByteArray(), resp.data)
         }
 
         @Test
@@ -361,7 +361,7 @@ class CounterAppletTest {
 
         @Test
         fun `echoMessage roundtrips utf8 payload`() {
-            val message = "Привет, BSim 🚀".toByteArray()
+            val message = "Привет, Store 🚀".toByteArray()
             val resp = send(0x0E, data = message)
             assertEquals(0x9000, resp.sw)
             assertContentEquals(message, resp.data)

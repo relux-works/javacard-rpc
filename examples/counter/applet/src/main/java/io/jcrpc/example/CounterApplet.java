@@ -23,7 +23,7 @@ public class CounterApplet extends CounterSkeleton {
     private static final byte[] MOCK_DISPLAY_NAME = {
         (byte) 0xD0, (byte) 0x9F, (byte) 0xD1, (byte) 0x80, (byte) 0xD0, (byte) 0xB8,
         (byte) 0xD0, (byte) 0xB2, (byte) 0xD0, (byte) 0xB5, (byte) 0xD1, (byte) 0x82,
-        (byte) 0x2C, (byte) 0x20, (byte) 0x42, (byte) 0x53, (byte) 0x69, (byte) 0x6D
+        (byte) 0x2C, (byte) 0x20, (byte) 0x53, (byte) 0x74, (byte) 0x6F, (byte) 0x72, (byte) 0x65
     };
     private static final byte[] MOCK_AID = {
         (byte) 0xF0, (byte) 0x00, (byte) 0x00, (byte) 0x01, (byte) 0x01

@@ -31,7 +31,7 @@ func TestPinnedCheckoutSignatureRefusals(t *testing.T) {
 				t.Fatalf("approved signature refused: %v", e)
 			}
 			fixture := t.TempDir()
-			for _, name := range []string{"codegen/go.mod", "codegen/go.sum", "compatibility/runtime-manifest.json", "compatibility/inputs/bsim-auth-2d23abd.toml", "compatibility/releases/javacard.json", "compatibility/releases/kotlin.json", "compatibility/releases/swift.json"} {
+			for _, name := range []string{"codegen/go.mod", "codegen/go.sum", "compatibility/runtime-manifest.json", "compatibility/inputs/sample-store.toml", "compatibility/releases/javacard.json", "compatibility/releases/kotlin.json", "compatibility/releases/swift.json"} {
 				b, e := os.ReadFile(filepath.Join(repo, name))
 				if e != nil {
 					t.Fatal(e)

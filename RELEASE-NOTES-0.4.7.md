@@ -33,14 +33,10 @@ versions while retaining historical generated ecosystem coordinates. Go
 consumption uses `GOWORK=off` and no production replacements. API v0.1.1's unused
 written-mode constant remains a compatibility symbol, not a supported mode.
 
-The [Java Card cleanup cost comparison](https://github.com/relux-works/javacard-rpc-server-javacard/blob/v0.3.1/PERSISTENT-WORKSPACE-COSTS.md)
-retains the rejected writer experiment and real Auth measurements. That SDK
-bridge required 2048 B staging and added 2060 B attributed RAM and 1912 B CAP
-against whole mode. Whole-mode counters cover instrumented Auth/generated
-stores; provider-written output outside the observer is omitted and bounded by
-actual output lengths. These figures establish no exact total NVM advantage,
-physical wear, timing, torn-write atomicity or total card RAM claim. The whole
-generated Auth production files retain their measured source identities.
+Consumer-specific experiments and measurements are excluded from the library
+contract. A logical-store observer
+does not establish exact all-origin NVM savings, physical wear, timing,
+torn-write atomicity or total card RAM.
 
 The [IDL contract](.spec/idl.md#52-bulk-workspace-storage-policy) describes the
 raw handler and cleanup bounds. Swift stream generation remains unsupported and
