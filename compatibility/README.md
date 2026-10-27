@@ -2,7 +2,7 @@
 
 `runtime-manifest.json` records the canonical repository, signed annotated tag,
 peeled commit, backend module/version/import and unchanged native identity for
-Java Card v0.6.0, Kotlin v0.3.0 and Swift v0.2.2. `releases/*.json` transcribe the
+Java Card v0.7.0, Kotlin v0.3.1 and Swift v0.2.3. `releases/*.json` transcribe the
 reviewed release receipts supplied to this integration. `allowed_signers` contains
 only the two public signing keys used by those receipts. Bootstrap verifies the
 actual tag object, peeled commit, checkout HEAD and signature, then refuses tracked
@@ -112,8 +112,8 @@ includeBuild('/absolute/generated/counter-server-javacard')
 
 Keep the runtime checkouts at native roots. The historical generated Kotlin
 manifest still names runtime `0.2.0` for byte parity; the root substitution selects
-the manifest's verified Kotlin v0.3.0 checkout for every included project. The
-Java Card substitution selects the signed v0.6.0 runtime, including when a
+the manifest's verified Kotlin v0.3.1 checkout for every included project. The
+Java Card substitution selects the signed v0.7.0 runtime, including when a
 generated ecosystem coordinate retains its historical version for byte parity. Consumers pin
 only the facade and use its runtime manifest; they do not independently guess
 compatible runtime versions or edit generated Gradle files.
@@ -137,8 +137,10 @@ compile that adapter and exercise its data/status result.
 `.github/workflows/compatibility.yml` runs JVM/Java Card and Swift/iOS lanes.
 `.temp/jcrpc-compat --mode toolchain --root .temp/toolchain` fetches public jars/kit/Ant and
 checks full SHA-256 digests before use. Simulator identity is
-`works.relux:jcardsim:3.0.5.9-relux.1`, source commit
-`9d336521d4e7febc609c629a64f96b39d8c4568c`. Ant task v26.02.22 comes from
+`works.relux:jcardsim:3.0.5.9-relux.4`, source commit
+`790b188f2600286f342f344f04deefcea370bdeb`. Its GCM engine rejects the offline-only
+eight-argument initializer with INVALID_INIT; legal online initializers remain
+available. Ant task v26.02.22 comes from
 commit `3605dc355dd3f3fe77193cd415348183d5d47b4d`; Java Card 3.0.5u4 kit bytes
 come from mirror commit `700ec80afdda210a0e62fb6a151a9cddc1acd244`; Apache Ant
 is 1.10.15. Digests and exact download URLs are in the Go bootstrap helper.

@@ -32,8 +32,7 @@ The JavaCard target generates the matching runtime (see its `STREAM-MODES.md`):
 any refused APDU and produces a streamed result into RAM on every read;
 `chunked` delivers chunks to the handler as they arrive and writes nothing
 persistent on any APDU, producing a streamed result into RAM on every read.
-Owner assignment for Auth: 0x10 `public-invalidate`; 0x20/0x30/0x40/0x70
-`chunked`. The Kotlin client output is byte-identical to a schema
+The Kotlin client output is byte-identical to a schema
 without modes; Swift still does not generate stream schemas.
 
 ## Release dependencies

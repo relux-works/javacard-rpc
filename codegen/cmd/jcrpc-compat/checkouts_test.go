@@ -83,7 +83,7 @@ func TestPinnedCheckoutSourceRefusals(t *testing.T) {
 	}
 }
 
-// The real signed v0.6.0 checkout is refused before any native build when the
+// The real signed v0.7.0 checkout is refused before any native build when the
 // manifest and its receipt agree on the authentic previous v0.5.0 tag object or
 // commit: Check admits the consistent pair, so only the checkout identity gate
 // can refuse it. The unchanged released identity is the positive control.

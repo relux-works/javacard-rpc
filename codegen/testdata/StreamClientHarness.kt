@@ -87,6 +87,9 @@ private class RuntimeBackedTransport(
         scalars,
         handlerSlot,
         sha256,
+        handler,
+        byteArrayOf(3),
+        shortArrayOf(1792, 192, 1792, 192, -1),
     )
 
     override suspend fun transmit(command: APDUCommand): APDUResponse {
@@ -116,14 +119,6 @@ private class RuntimeBackedTransport(
             runtime.dispatch(
                 1.toByte(),
                 operation.toByte(),
-                true,
-                1792.toShort(),
-                192.toShort(),
-                true,
-                1792.toShort(),
-                192.toShort(),
-                (-1).toShort(),
-                handler,
                 p1.toByte(),
                 p2.toByte(),
                 request,

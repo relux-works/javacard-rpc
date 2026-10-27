@@ -14,7 +14,7 @@ import (
 type artifact struct{ url, name, digest string }
 
 var publicToolchain = []artifact{
-	{"https://github.com/relux-works/jcardsim/releases/download/v3.0.5.9-relux.1/jcardsim-3.0.5.9-relux.1.jar", "jcardsim.jar", "fd6e1289d0a337c5ac1dc9624bc46cf8717bd162228d8d801ada9615ba3d122a"},
+	{"https://github.com/relux-works/jcardsim/releases/download/v3.0.5.9-relux.4/jcardsim-3.0.5.9-relux.4.jar", "jcardsim.jar", "788e2d5cd7f43b21cd60a055ce3dcd9d62c82cdeb9ebd0a109112fa4170f48da"},
 	{"https://github.com/martinpaljak/ant-javacard/releases/download/v26.02.22/ant-javacard.jar", "ant-javacard.jar", "779909502744af7eb8c24b7b423c4efa6fbf47a1274a11ddf8c49697b1028e64"},
 	{"https://codeload.github.com/martinpaljak/oracle_javacard_sdks/tar.gz/700ec80afdda210a0e62fb6a151a9cddc1acd244", "sdk.tar.gz", "367f5dc6a922a689a1447eff9125da919a36f5a8594eeedcd454eb0ada62f37f"},
 	{"https://archive.apache.org/dist/ant/binaries/apache-ant-1.10.15-bin.tar.gz", "ant.tar.gz", "71334d7e5d98cfe53d6c429a648a5021137a967378667306c5f613dff5180506"},

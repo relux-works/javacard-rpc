@@ -220,29 +220,32 @@ public final class StreamDemoBoundedStreamRuntime implements StreamDemoStreamEnd
     public static short responseLimit;
     public static short responseChunk;
     public static short shortResponseLength;
+    private final byte[] directions;
+    private final short[] limits;
 
     public StreamDemoBoundedStreamRuntime(
             byte[] workspace, byte[] digestScratch, short[] scalars,
-            Object[] handlerSlot, Sha256 sha256) {
+            Object[] handlerSlot, Sha256 sha256, Handler handler,
+            byte[] directions, short[] limits) {
+        this.directions = directions;
+        this.limits = limits;
     }
 
     public short dispatch(
-            byte methodIdIn, byte operationIn, boolean requestEnabledIn,
-            short requestLimitIn, short requestChunkIn, boolean responseEnabledIn,
-            short responseLimitIn, short responseChunkIn, short shortResponseLengthIn,
-            Handler handler, byte p1, byte p2,
+            byte methodIdIn, byte operationIn, byte p1, byte p2,
             byte[] requestBuffer, short requestOffset, short requestLength,
             byte[] responseBuffer, short responseOffset, short responseCapacity, byte[] callerWorkspace, short callerWorkspaceOffset, short callerWorkspaceCapacity) {
         calls++;
         methodId = methodIdIn;
         operation = operationIn;
-        requestEnabled = requestEnabledIn;
-        requestLimit = requestLimitIn;
-        requestChunk = requestChunkIn;
-        responseEnabled = responseEnabledIn;
-        responseLimit = responseLimitIn;
-        responseChunk = responseChunkIn;
-        shortResponseLength = shortResponseLengthIn;
+        int row = (methodIdIn & 255) - 1, base = row * 5;
+        requestEnabled = (directions[row] & 2) != 0;
+        requestLimit = limits[base];
+        requestChunk = limits[base + 1];
+        responseEnabled = (directions[row] & 1) != 0;
+        responseLimit = limits[base + 2];
+        responseChunk = limits[base + 3];
+        shortResponseLength = limits[base + 4];
         return (short) 0;
     }
 

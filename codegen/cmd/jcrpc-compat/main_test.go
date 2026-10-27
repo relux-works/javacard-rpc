@@ -36,7 +36,7 @@ func TestManifestRefusals(t *testing.T) {
 		"duplicate":              func(m *compat.Manifest) { m.Targets[1] = m.Targets[0] },
 		"unknown":                func(m *compat.Manifest) { m.Targets[1].Target = "other" },
 		"schema":                 func(m *compat.Manifest) { m.Schema = 2 },
-		"old-facade-version":     func(m *compat.Manifest) { m.FacadeVersion = "0.6.0" },
+		"old-facade-version":     func(m *compat.Manifest) { m.FacadeVersion = "0.7.0" },
 		"missing-facade-version": func(m *compat.Manifest) { m.FacadeVersion = "" },
 		"input-drift":            func(m *compat.Manifest) { m.SampleInput.SHA256 = strings.Repeat("0", 64) },
 	}
@@ -183,9 +183,9 @@ func editFile(t *testing.T, path string, pairs [][2]string, extra string) {
 // the manifest and its receipt, so Check passes every backend guard.
 func historicalJavaCard(t *testing.T, root string) {
 	t.Helper()
-	editFile(t, filepath.Join(root, "codegen/go.mod"), [][2]string{{"javacard-rpc-server-javacard v0.6.0", "javacard-rpc-server-javacard v0.5.0"}}, "")
+	editFile(t, filepath.Join(root, "codegen/go.mod"), [][2]string{{"javacard-rpc-server-javacard v0.7.0", "javacard-rpc-server-javacard v0.5.0"}}, "")
 	for _, name := range []string{"compatibility/runtime-manifest.json", "compatibility/releases/javacard.json"} {
-		editFile(t, filepath.Join(root, name), [][2]string{{"v0.6.0", "v0.5.0"}, {"javacard:0.6.0", "javacard:0.5.0"}, {"46fa6ecb45135be0ba9b1d4b9cd9aa8663718510", "96bf35555bba8a040eba880622629ff0f25b2556"}, {"b43b8d6d2834f57d2a1e899b99fe22996e2709ee", "9bbf1db745834f3efefb54846f26bec6310f8c22"}}, "")
+		editFile(t, filepath.Join(root, name), [][2]string{{"v0.7.0", "v0.5.0"}, {"javacard:0.7.0", "javacard:0.5.0"}, {"b4708ffd408f709f9f9f546fbcedfe15982d4faf", "96bf35555bba8a040eba880622629ff0f25b2556"}, {"81d44b3b756253a8ab088ec0f879b2e709f57ba0", "9bbf1db745834f3efefb54846f26bec6310f8c22"}}, "")
 	}
 }
 
@@ -270,11 +270,11 @@ func TestManifestCandidatePseudoVersionRefusals(t *testing.T) {
 			if code := run([]string{"--repo", root}); code != 0 {
 				t.Fatalf("released tuple control refused: %d", code)
 			}
-			editFile(t, filepath.Join(root, "codegen/go.mod"), [][2]string{{"javacard-rpc-server-javacard v0.6.0", "javacard-rpc-server-javacard " + candidateBackend}}, "")
+			editFile(t, filepath.Join(root, "codegen/go.mod"), [][2]string{{"javacard-rpc-server-javacard v0.7.0", "javacard-rpc-server-javacard " + candidateBackend}}, "")
 			editFile(t, filepath.Join(root, "codegen/go.sum"), nil, candidateBackendSums+candidateAPISums)
 			if kind == "claimed" {
 				for _, name := range []string{"compatibility/runtime-manifest.json", "compatibility/releases/javacard.json"} {
-					editFile(t, filepath.Join(root, name), [][2]string{{"v0.6.0", candidateBackend}}, "")
+					editFile(t, filepath.Join(root, name), [][2]string{{"v0.7.0", candidateBackend}}, "")
 				}
 			}
 			if code := run([]string{"--repo", root}); code != 1 {

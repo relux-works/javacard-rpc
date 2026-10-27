@@ -177,8 +177,13 @@ func TestSampleStoreGeneratedAllocationPayload(t *testing.T) {
 			// Independent inventory: scratch 32 + scalars 17*2 + three status
 			// words 3*2 + adapter 255 = 327; four stream rows need 4+4+20*2 = 48.
 			transient, persistent, arrays := workspace+327, 48, 12
+			if policy != "baseline" {
+				// Current runtimes own a second copy of the four direction bytes
+				// and twenty short limits: 4 + 20*2 = 44 B in two arrays.
+				persistent, arrays = persistent+44, arrays+2
+			}
 			if policy == "persistent" {
-				transient, persistent, arrays = 328, 48+workspace, 13
+				transient, persistent, arrays = 328, persistent+workspace, arrays+1
 			}
 			want := fmt.Sprintf("TOTAL transient primitive payload=%d B; transient reference slots=1; persistent primitive payload=%d B; persistent reference slots=0; arrays=%d", transient, persistent, arrays)
 			if !strings.Contains(output, want) {

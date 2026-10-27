@@ -21,6 +21,9 @@ public final class StreamRuntimeHarness {
         testShortResponseCloseIsExactlyOnce();
         testExactShortResponseLength();
         testExplicitAbortWipesWorkspace();
+        testInstalledConfigurationIsImmutable();
+        testUnknownMethodPreservesOwner();
+        testInstallationShapeRefusals();
     }
 
     private static void testBidirectionalHappyPathAndLostCloseAck() throws Exception {
@@ -148,13 +151,13 @@ public final class StreamRuntimeHarness {
     // hidden instance field would make the second runtime see an empty state.
     private static void testStateMachineLivesOnlyInInjectedArrays() throws Exception {
         Fixture fixture = new Fixture();
-        StreamDemoBoundedStreamRuntime twin = fixture.twinRuntime();
         CountingReverseHandler handler = new CountingReverseHandler();
         Session session = fixture.session((byte) 1, true, true, handler);
+        StreamDemoBoundedStreamRuntime twin = fixture.twinRuntime();
         byte[] response = new byte[255];
         send(session, 0, 0, 2, new byte[192], response);
 
-        Session viaTwin = new Session(twin, (byte) 1, true, true, (short) -1, handler);
+        Session viaTwin = new Session(twin, (byte) 1);
         byte[] tail = new byte[]{8};
         send(viaTwin, 0, 1, 2, tail, response);
         byte[] complete = new byte[193];
@@ -285,6 +288,69 @@ public final class StreamRuntimeHarness {
         require(allZero(fixture.digest), "explicit abort must wipe digest scratch");
     }
 
+    // Mutating installation inputs cannot change the accepted request, result
+    // shape or installed handler. This exercises the owned copies at runtime.
+    private static void testInstalledConfigurationIsImmutable() throws Exception {
+        Fixture fixture = new Fixture();
+        CountingReverseHandler handler = new CountingReverseHandler();
+        Session session = fixture.session((byte) 1, true, true, handler);
+        Arrays.fill(fixture.directions, (byte) 0);
+        Arrays.fill(fixture.limits, (short) 0);
+        fixture.installedHandler = new CountingReverseHandler();
+        byte[] input = new byte[]{7};
+        byte[] response = new byte[255];
+        send(session, 0, 0, 1, input, response);
+        require(send(session, 1, 0, 0, closeData(input), response) == 35,
+                "installed response shape changed");
+        require(handler.calls == 1, "installed handler changed");
+    }
+
+    // Unknown method ids produce the intended refusal without disturbing a live
+    // ordinary upload; a subsequent valid close remains usable.
+    private static void testUnknownMethodPreservesOwner() throws Exception {
+        Fixture fixture = new Fixture();
+        Session session = fixture.session((byte) 1, true, true, new CountingReverseHandler());
+        byte[] input = new byte[]{7}, response = new byte[255];
+        send(session, 0, 0, 1, input, response);
+        byte[] workspace = fixture.workspace.clone();
+        short[] scalars = fixture.scalars.clone();
+        Object handler = fixture.handlerSlot[0];
+        for (byte method : new byte[]{0, -1, 3}) {
+            expectStatus(0x6985, () -> fixture.runtime.dispatch(method,
+                    StreamDemoStreamEndpoint.OP_ABORT, (byte) 0, (byte) 0,
+                    EMPTY, (short) 0, (short) 0, response, (short) 0, (short) 255,
+                    response, (short) 0, (short) 255));
+            require(Arrays.equals(workspace, fixture.workspace), "unknown method wrote workspace");
+            require(Arrays.equals(scalars, fixture.scalars), "unknown method changed state");
+            require(fixture.handlerSlot[0] == handler, "unknown method replaced owner");
+        }
+        require(send(session, 1, 0, 0, closeData(input), response) == 35,
+                "valid owner could not close after refusal");
+    }
+
+    // A malformed table is an installation error, before an existing injected
+    // session can be cleared; the same valid bindings remain usable afterward.
+    private static void testInstallationShapeRefusals() throws Exception {
+        Fixture fixture = new Fixture();
+        Session session = fixture.session((byte) 1, true, true, new CountingReverseHandler());
+        byte[] input = new byte[]{7}, response = new byte[255];
+        send(session, 0, 0, 1, input, response);
+        short[] before = fixture.scalars.clone();
+        byte[] workspace = fixture.workspace.clone();
+        Object handler = fixture.handlerSlot[0];
+        short[] valid = fixture.limits;
+        for (short[] invalid : new short[][]{null, new short[9], new short[5]}) {
+            fixture.limits = invalid;
+            expectStatus(0x6A84, () -> fixture.configuredRuntime());
+            require(Arrays.equals(before, fixture.scalars), "bad installation cleared session");
+            require(Arrays.equals(workspace, fixture.workspace), "bad installation wrote workspace");
+            require(fixture.handlerSlot[0] == handler, "bad installation replaced owner");
+        }
+        fixture.limits = valid;
+        require(send(session, 1, 0, 0, closeData(input), response) == 35,
+                "valid owner could not close after bad installation");
+    }
+
     private static int send(Session session, int operation, int p1, int p2,
                             byte[] request, byte[] response) {
         return session.dispatch((byte) operation, (byte) p1, (byte) p2,
@@ -349,7 +415,13 @@ public final class StreamRuntimeHarness {
         final byte[] digest = new byte[32];
         final short[] scalars = new short[StreamDemoBoundedStreamRuntime.SCALAR_COUNT];
         final Object[] handlerSlot = new Object[StreamDemoBoundedStreamRuntime.HANDLER_SLOT_COUNT];
-        final StreamDemoBoundedStreamRuntime runtime = new StreamDemoBoundedStreamRuntime(
+        StreamDemoBoundedStreamRuntime runtime;
+        byte[] directions;
+        short[] limits;
+        StreamDemoStreamEndpoint.Handler installedHandler;
+
+        StreamDemoBoundedStreamRuntime configuredRuntime() {
+            return new StreamDemoBoundedStreamRuntime(
                 workspace, digest, scalars, handlerSlot,
                 (input, inputOffset, inputLength, output, outputOffset) -> {
                     try {
@@ -360,7 +432,8 @@ public final class StreamRuntimeHarness {
                     } catch (Exception failure) {
                         throw new RuntimeException(failure);
                     }
-                });
+                }, installedHandler, directions, limits);
+        }
 
         Session session(byte methodId, boolean request, boolean response,
                         StreamDemoStreamEndpoint.Handler handler) {
@@ -377,53 +450,36 @@ public final class StreamRuntimeHarness {
 
         /** A second runtime bound to the very same transient arrays. */
         StreamDemoBoundedStreamRuntime twinRuntime() {
-            return new StreamDemoBoundedStreamRuntime(workspace, digest, scalars, handlerSlot,
-                    (input, inputOffset, inputLength, output, outputOffset) -> {
-                        try {
-                            MessageDigest md = MessageDigest.getInstance("SHA-256");
-                            md.update(input, inputOffset, inputLength);
-                            byte[] value = md.digest();
-                            System.arraycopy(value, 0, output, outputOffset, value.length);
-                        } catch (Exception failure) {
-                            throw new RuntimeException(failure);
-                        }
-                    });
+            return configuredRuntime();
         }
 
         Session session(byte methodId, boolean request, boolean response,
                         short exactShortResponseLength,
                         StreamDemoStreamEndpoint.Handler handler) {
-            return new Session(runtime, methodId, request, response,
-                    exactShortResponseLength, handler);
+            // Configure both method ids before commands start. Each runtime
+            // owns its immutable bindings while the transient session is shared.
+            byte direction = (byte) ((request ? 2 : 0) | (response ? 1 : 0));
+            directions = new byte[]{direction, direction};
+            limits = new short[]{1792, 192, 1792, 192, exactShortResponseLength,
+                    1792, 192, 1792, 192, exactShortResponseLength};
+            installedHandler = handler;
+            runtime = configuredRuntime();
+            return new Session(runtime, methodId);
         }
     }
 
     private static final class Session {
         private final StreamDemoBoundedStreamRuntime runtime;
         private final byte methodId;
-        private final boolean request;
-        private final boolean response;
-        private final short exactShortResponseLength;
-        private final StreamDemoStreamEndpoint.Handler handler;
-
-        Session(StreamDemoBoundedStreamRuntime runtime, byte methodId, boolean request,
-                boolean response, short exactShortResponseLength,
-                StreamDemoStreamEndpoint.Handler handler) {
+        Session(StreamDemoBoundedStreamRuntime runtime, byte methodId) {
             this.runtime = runtime;
             this.methodId = methodId;
-            this.request = request;
-            this.response = response;
-            this.exactShortResponseLength = exactShortResponseLength;
-            this.handler = handler;
         }
 
         short dispatch(byte operation, byte p1, byte p2, byte[] input, short inputOffset,
                        short inputLength, byte[] output, short outputOffset, short outputCapacity) {
             return runtime.dispatch(methodId, operation,
-                    request, (short) 1792, (short) 192,
-                    response, (short) 1792, (short) 192,
-                    exactShortResponseLength,
-                    handler, p1, p2, input, inputOffset, inputLength,
+                    p1, p2, input, inputOffset, inputLength,
                     output, outputOffset, outputCapacity, output, outputOffset, outputCapacity);
         }
     }

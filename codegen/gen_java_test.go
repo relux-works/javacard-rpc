@@ -208,8 +208,9 @@ func TestGenerateJavaStreamPassesExactShortResponseLength(t *testing.T) {
 	if count := strings.Count(skeleton, fragment); count != 1 {
 		t.Fatalf("fixed short response length must reach the dispatcher; got %d occurrences of %q:\n%s", count, fragment, skeleton)
 	}
-	if !strings.Contains(skeleton, "STREAM_LIMITS[(short) (limits + 4)], this,") {
-		t.Fatalf("the dispatcher must pass the exact short response length column:\n%s", skeleton)
+	if !strings.Contains(skeleton, "this, this, STREAM_DIRECTIONS, STREAM_LIMITS);") ||
+		!strings.Contains(string(result.StreamRuntimeSource), "short shortResponseLength = methodLimits[(short) (limits + 4)];") {
+		t.Fatal("installed runtime must read the exact short response length column")
 	}
 }
 

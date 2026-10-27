@@ -496,10 +496,13 @@ object headers, reference widths and digest/provider/JCRE allocations.
 
 
 The facade composes the released target backends at compile time: Java Card
-v0.6.0, Kotlin v0.3.0 and Swift v0.2.2, through pluginapi v0.1.2.
-Facade **v0.7.0** adds the `authenticated-invalidate` cleanup selector and
-per-method `stream_mode`; see [0.7.0 release notes](RELEASE-NOTES-0.7.0.md)
-for the exact signed release tuple.
+v0.7.0, Kotlin v0.3.1 and Swift v0.2.3, through pluginapi v0.1.2.
+Facade **v0.8.0** adopts compact JavaCard stream dispatch with installation-owned
+metadata and the strict online-GCM simulator; see
+[0.8.0 release notes](RELEASE-NOTES-0.8.0.md) for the exact signed release tuple.
+Facade v0.7.0 added the `authenticated-invalidate` cleanup selector and
+per-method `stream_mode`; its [release notes](RELEASE-NOTES-0.7.0.md) retain the
+historical tuple.
 Facade v0.6.0 added explicit caller workspace to every Java callback.
 See [0.6.0 release notes](RELEASE-NOTES-0.6.0.md) and
 [the copyable caller migration](CALLER-WORKSPACE.md) for ordinary/stream API,

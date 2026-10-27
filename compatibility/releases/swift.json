@@ -1,13 +1,13 @@
 {
  "backend_import": "github.com/relux-works/javacard-rpc-client-swift/codegen",
- "backend_version": "v0.2.2",
- "commit": "3db025b025238ab21b2b458bd0cf0cad285223f4",
+ "backend_version": "v0.2.3",
+ "commit": "dba5c4825d668a24aa2ed84b588a1a83fea890a3",
  "go_module": "github.com/relux-works/javacard-rpc-client-swift",
  "repository": "https://github.com/relux-works/javacard-rpc-client-swift",
  "runtime": "JavaCardRPCClient",
- "swift_exact_version": "0.2.2",
+ "swift_exact_version": "0.2.3",
  "swift_package": "javacard-rpc-client-swift",
- "tag": "v0.2.2",
- "tag_object": "e0052b54b590a32faa96baad7b0a8d3fbc2efe0d",
+ "tag": "v0.2.3",
+ "tag_object": "9c61469378436330081af2d90999b19dd9342f93",
  "target": "swift"
 }
