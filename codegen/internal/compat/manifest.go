@@ -71,8 +71,8 @@ func Check(repo, manifest string) (Manifest, error) {
 	if m.Schema != 1 || len(m.Targets) != 3 {
 		return m, fmt.Errorf("manifest must contain exactly three targets, schema 1")
 	}
-	if m.FacadeVersion != "0.8.0" {
-		return m, fmt.Errorf("facade release version must be 0.8.0")
+	if m.FacadeVersion != "0.9.0" {
+		return m, fmt.Errorf("facade release version must be 0.9.0")
 	}
 	seen := map[string]bool{}
 	for _, p := range m.Targets {

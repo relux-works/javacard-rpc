@@ -6,6 +6,6 @@ require (
 	github.com/BurntSushi/toml v1.5.0
 	github.com/relux-works/javacard-rpc-client-kotlin v0.3.1
 	github.com/relux-works/javacard-rpc-client-swift v0.2.3
-	github.com/relux-works/javacard-rpc-server-javacard v0.7.0
+	github.com/relux-works/javacard-rpc-server-javacard v0.8.0
 	github.com/relux-works/javacard-rpc/pluginapi v0.1.2
 )

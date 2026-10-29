@@ -2,7 +2,7 @@
 
 `runtime-manifest.json` records the canonical repository, signed annotated tag,
 peeled commit, backend module/version/import and unchanged native identity for
-Java Card v0.7.0, Kotlin v0.3.1 and Swift v0.2.3. `releases/*.json` transcribe the
+Java Card v0.8.0, Kotlin v0.3.1 and Swift v0.2.3. `releases/*.json` transcribe the
 reviewed release receipts supplied to this integration. `allowed_signers` contains
 only the two public signing keys used by those receipts. Bootstrap verifies the
 actual tag object, peeled commit, checkout HEAD and signature, then refuses tracked
@@ -113,7 +113,7 @@ includeBuild('/absolute/generated/counter-server-javacard')
 Keep the runtime checkouts at native roots. The historical generated Kotlin
 manifest still names runtime `0.2.0` for byte parity; the root substitution selects
 the manifest's verified Kotlin v0.3.1 checkout for every included project. The
-Java Card substitution selects the signed v0.7.0 runtime, including when a
+Java Card substitution selects the signed v0.8.0 runtime, including when a
 generated ecosystem coordinate retains its historical version for byte parity. Consumers pin
 only the facade and use its runtime manifest; they do not independently guess
 compatible runtime versions or edit generated Gradle files.

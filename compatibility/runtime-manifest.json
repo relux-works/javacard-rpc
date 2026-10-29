@@ -1,5 +1,5 @@
 {
- "facade_version": "0.8.0",
+ "facade_version": "0.9.0",
  "sample_input": {
   "path": "compatibility/inputs/sample-store.toml",
   "revision": "sample-store-v1",
@@ -9,13 +9,13 @@
  "targets": [
   {
    "backend_import": "github.com/relux-works/javacard-rpc-server-javacard/codegen",
-   "backend_version": "v0.7.0",
-   "commit": "b4708ffd408f709f9f9f546fbcedfe15982d4faf",
+   "backend_version": "v0.8.0",
+   "commit": "2ba3e088fec8de6a5bef7ebb7b1087d60b6cec6d",
    "go_module": "github.com/relux-works/javacard-rpc-server-javacard",
    "repository": "https://github.com/relux-works/javacard-rpc-server-javacard",
-   "runtime": "io.jcrpc:javacard-rpc-server-javacard:0.7.0",
-   "tag": "v0.7.0",
-   "tag_object": "81d44b3b756253a8ab088ec0f879b2e709f57ba0",
+   "runtime": "io.jcrpc:javacard-rpc-server-javacard:0.8.0",
+   "tag": "v0.8.0",
+   "tag_object": "70530119a0333079291d1f700c16ae2ef7f0fbcc",
    "target": "javacard"
   },
   {

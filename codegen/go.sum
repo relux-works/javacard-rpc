@@ -12,5 +12,7 @@ github.com/relux-works/javacard-rpc-server-javacard v0.6.0 h1:cE5hG8WbUQgA7lopGK
 github.com/relux-works/javacard-rpc-server-javacard v0.6.0/go.mod h1:eyaHxOyVsAf+45/JkurUToH0i2FoCZVQCvKQd1VK3u0=
 github.com/relux-works/javacard-rpc-server-javacard v0.7.0 h1:ACjZ50UHw/YYOyJg1Xcd+XiPQfNmFnHAYQ/nVHYp75Q=
 github.com/relux-works/javacard-rpc-server-javacard v0.7.0/go.mod h1:eyaHxOyVsAf+45/JkurUToH0i2FoCZVQCvKQd1VK3u0=
+github.com/relux-works/javacard-rpc-server-javacard v0.8.0 h1:Qy0GWNb1h8IJGrKDVoG08eiv3Oxijt93zpAutMwNdjE=
+github.com/relux-works/javacard-rpc-server-javacard v0.8.0/go.mod h1:eyaHxOyVsAf+45/JkurUToH0i2FoCZVQCvKQd1VK3u0=
 github.com/relux-works/javacard-rpc/pluginapi v0.1.2 h1:cJREKZyR6SxjeqFET2toiMaGlsZlLT19FCC9YFvfMYU=
 github.com/relux-works/javacard-rpc/pluginapi v0.1.2/go.mod h1:vini/jA9xID/u2iYwtKViPacEvP9nLIapL3RdQV7RBc=

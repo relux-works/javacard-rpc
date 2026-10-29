@@ -10,7 +10,7 @@ import (
 	"github.com/relux-works/javacard-rpc/codegen/internal/compat"
 )
 
-// Production run -> compat.Check accepts the released v0.7.0 tuple and rejects
+// Production run -> compat.Check accepts the released v0.8.0 tuple and rejects
 // the authentic previous signed v0.5.0 tag object, commit or version paired
 // with the current receipt. This proves consistency; VerifyCheckout supplies
 // signature trust.
@@ -80,7 +80,7 @@ func TestPreparedWriterConsumerCoordinates(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	for _, coordinate := range []string{"io.jcrpc:javacard-rpc-server-javacard:0.7.0", "io.jcrpc:javacard-rpc-client-kotlin:0.3.1"} {
+	for _, coordinate := range []string{"io.jcrpc:javacard-rpc-server-javacard:0.8.0", "io.jcrpc:javacard-rpc-client-kotlin:0.3.1"} {
 		if !strings.Contains(string(build), coordinate) {
 			t.Fatalf("missing pin %s", coordinate)
 		}
