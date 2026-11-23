@@ -496,8 +496,11 @@ object headers, reference widths and digest/provider/JCRE allocations.
 
 
 The facade composes the released target backends at compile time: Java Card
-v0.8.0, Kotlin v0.3.1 and Swift v0.2.3, through pluginapi v0.1.2.
-Facade **v0.9.0** adopts public-stream invalidation without cancelling authenticated
+v0.9.0, Kotlin v0.3.1 and Swift v0.2.3, through pluginapi v0.1.2.
+Facade **v0.10.0** exposes verified stream digests and optional applet-owned
+transient workspaces for mixed-mode JavaCard runtimes. See the
+[0.10.0 release notes](RELEASE-NOTES-0.10.0.md).
+Facade v0.9.0 adopts public-stream invalidation without cancelling authenticated
 issuer streams; see [0.9.0 release notes](RELEASE-NOTES-0.9.0.md).
 Facade v0.8.0 adopted compact JavaCard stream dispatch with installation-owned
 metadata and the strict online-GCM simulator; see
